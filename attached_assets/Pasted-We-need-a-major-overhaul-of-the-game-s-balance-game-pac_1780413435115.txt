@@ -1,0 +1,26 @@
+We need a major overhaul of the game's balance, game pacing, language bugs, and core mechanics. Currently, the game is broken: maxing out all production and tech budgets guarantees an instant win, waiting 60 seconds every turn is boring, and the Thai language translation is partially missing.
+
+Please apply these updates to the Zustand store and UI components:
+
+1. **Fix the "Max-Out Budget" Exploit & Add Stock Penalties:**
+   - Implement Diminishing Returns: Maxing out budgets should exponentially increase Fixed Operational Costs and Unit Production Costs.
+   - Add Inventory Holding Penalties: If a player overproduces beyond the Actual Market Demand, the unsold smartphones become "Electronic Waste" in the warehouse, costing $5M per 100,000 unsold units at the end of the quarter.
+   - Price/Demand Elasticty: If the smartphone price is set too high relative to the Tech Level, customer demand must drop immediately to 0.
+
+2. **Add "Ready / Commit Turn" Button & Smart Bot Timing:**
+   - Add a "Submit & Ready" button in the Action Phase UI. 
+   - Change Bot Behavior: The Bot will now lock in its actions dynamically between second 15 and 30 of the countdown.
+   - If BOTH the Player clicks "Submit & Ready" and the Bot has locked its actions, instantly fast-forward the timer to 00:00 and skip to the Resolution Phase. No more boring waiting.
+
+3. **Implement High-Stakes M&A and Talent Poaching (Headhunter) System:**
+   - In the HR/Intel sidebar tab, add two premium permanent upgrades:
+     - **Talent Poaching ($50M Capital):** Hire a legendary tech expert. Permanently increases baseline Tech Level growth by +2 every quarter and reduces Tech upgrade costs by 20%.
+     - **Component Factory M&A ($150M Capital):** Buy out a key supply chain factory. Permanently reduces Unit Component Costs by 30% and immune to 50% of Supply Chain random events.
+   - The Bot can also buy these upgrades, and the UI will alert the player if the Bot completes an M&A (if Intel is active).
+
+4. **Fix Complete i18n Translation Leak:**
+   - Ensure absolutely NO English strings are hardcoded in the UI components. All text, event descriptions, sliders, and titles must read from `locales/th.json` and `locales/en.json` via `useTranslation()`.
+   - Update `th.json` to have fully translated Thai equivalents for every single piece of text currently shown in the game.
+
+5. **Enhance Real-Time Bot Intelligence:**
+   - During the 60-second countdown, the Bot will actively react. If the player has active Intel, show a live alert: "Bot is shifting budget to Tech!" or "Bot is preparing a price cut!". This forces real-time mind games.

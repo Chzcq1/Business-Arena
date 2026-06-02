@@ -1,0 +1,30 @@
+Act as a Senior Full-Stack Game Developer. We need to finalize the "Silicon Empire" MVP. I am giving you the "Master Update Prompt" to completely overhaul the balance, pacing, mechanics, and i18n localization in one go. Please update the Next.js, Zustand store, and UI components based on ALL the following requirements:
+
+**1. STRICT i18n & Thai Localization (No Hardcoded English):**
+- Ensure 100% of the UI text, notifications, alerts, and button labels use `useTranslation()` from react-i18next. 
+- Populate `locales/th.json` with complete, natural Thai translations for EVERYTHING. Absolutely no hardcoded English strings in the React components.
+
+**2. Game Pacing & UI Flow (The "Ready" Button):**
+- Add a prominent "Submit Action & Ready" button to the Dashboard.
+- The 60-second real-time timer remains, but if the Player clicks "Ready", and the Bot has already locked its decision (Bot should randomly lock in between 15s-30s), instantly fast-forward the timer to 00:00 and execute the Resolution Phase to eliminate boring wait times.
+
+**3. Ultimate Balancing & Anti-Exploit (Fixing the Max-Out Bug):**
+- **Diminishing Returns:** Maxing out Production or Tech budgets must cause an exponential increase in `UnitCost`. 
+- **Inventory Penalty (E-Waste):** If a player overproduces (Production > Actual Sales Demand), the unsold units incur a massive "Warehousing & E-Waste Penalty" at the end of the quarter, severely draining Capital.
+- **Price/Demand Elasticity:** If the price is set too high compared to the `TechLevel`, consumer demand instantly drops to near zero.
+
+**4. Advanced Financials: Bank Loans (Risk/Reward):**
+- Add a "Bank / Finance" section. 
+- The player can take out an "Emergency Loan" (e.g., receive +$100M Capital immediately).
+- Consequence: Incurs a strict Debt status. For the next 4 quarters, a fixed Principal + High Interest deduction (e.g., $30M/quarter) is automatically subtracted during the Resolution Phase. Taking multiple loans leads to massive debt traps.
+
+**5. Long-Term Strategy: M&A and Talent Poaching:**
+- Add a "Corporate Upgrades" tab with high-cost, permanent buffs:
+  - **M&A Component Factory (Cost: $150M):** Permanently reduces variable production costs by 25%.
+  - **Poach Legendary Engineer (Cost: $80M):** Grants a permanent +2 passive growth to Tech Level every quarter.
+
+**6. Corporate Sabotage (Aggressive Intel Usage):**
+- Expand the Espionage system. Players can spend Intel Points + Capital to launch "Sabotage Campaigns" against the Bot (e.g., "DDOS Attack on Logistics" or "Fake News PR"). 
+- Sabotage temporarily reduces the Bot's Market Share or Production Capacity for that quarter.
+
+Please integrate these deeply into the Zustand game loop logic (calculate debts, penalties, M&A buffs, and sabotages during the Resolution Phase) and build clean, intuitive UI components for these new features in the Tailwind layout.

@@ -1,72 +1,68 @@
 import { useGameStore } from "@/store/gameStore";
-import { Trophy, TrendingDown, BarChart2, RotateCcw } from "lucide-react";
-
-function formatMoney(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${n}`;
-}
+import { useT } from "@/hooks/useT";
+import { formatCapital } from "@/utils/format";
+import { Trophy, TrendingDown, BarChart2, RotateCcw, Star, Clock } from "lucide-react";
 
 export function GameOver() {
-  const { player, quarter, language, startGame } = useGameStore();
+  const { player, bot, quarter, gameResult, resetGame } = useGameStore();
+  const { t } = useT();
 
-  const isWinner = player.capital > 10_000_000;
-  const isBankrupt = player.capital <= 0;
+  const isBankrupt = gameResult === "bankrupt";
+  const isInstantWin = gameResult === "won_instant";
+  const isTimeoutWin = gameResult === "won_timeout";
+  const isTimeoutLoss = gameResult === "won_timeout_lost";
+  const isAnyWin = isInstantWin || isTimeoutWin;
+
+  const title = isBankrupt ? t("game_over.bankruptTitle")
+    : isInstantWin ? t("game_over.winInstantTitle")
+    : isTimeoutWin ? t("game_over.winTimeoutTitle")
+    : isTimeoutLoss ? t("game_over.winTimeoutTitle")
+    : t("game_over.bankruptTitle");
+
+  const sub = isBankrupt ? t("game_over.bankruptSub")
+    : isInstantWin ? t("game_over.winInstantSub")
+    : isTimeoutWin ? t("game_over.winTimeoutWonSub")
+    : t("game_over.winTimeoutLostSub");
 
   const rating =
-    player.capital > 50_000_000 ? "Visionary CEO"
-    : player.capital > 30_000_000 ? "Industry Titan"
-    : player.capital > 15_000_000 ? "Solid Executive"
-    : player.capital > 5_000_000 ? "Struggling Leader"
-    : "Chapter 11";
+    isInstantWin ? t("game_over.ratingVisionary")
+    : player.capital > 200_000_000 ? t("game_over.ratingTitan")
+    : player.capital > 50_000_000 ? t("game_over.ratingSolid")
+    : player.capital > 10_000_000 ? t("game_over.ratingStruggling")
+    : t("game_over.ratingBankrupt");
 
-  const t = language === "en"
-    ? {
-        title: isBankrupt ? "Bankruptcy" : isWinner ? "Game Complete" : "Game Over",
-        sub: isBankrupt
-          ? "Gufuton Inc. has filed for bankruptcy. The board has voted you out."
-          : `${quarter - 1} quarters completed. The market has rendered its verdict.`,
-        rating: "FINAL RATING",
-        capital: "Final Capital",
-        morale: "Company Morale",
-        share: "Final Market Share",
-        quarters: "Quarters Survived",
-        restart: "New Game",
-      }
-    : {
-        title: isBankrupt ? "ล้มละลาย" : "เกมจบแล้ว",
-        sub: isBankrupt ? "Gufuton Inc. ยื่นขอล้มละลาย คณะกรรมการลงมติปลดคุณ" : `ผ่านไป ${quarter - 1} ไตรมาส ตลาดได้ตัดสินแล้ว`,
-        rating: "คะแนนสุดท้าย",
-        capital: "ทุนสุดท้าย",
-        morale: "ขวัญกำลังใจบริษัท",
-        share: "ส่วนแบ่งตลาดสุดท้าย",
-        quarters: "ไตรมาสที่ผ่าน",
-        restart: "เริ่มเกมใหม่",
-      };
+  const iconEl = isBankrupt ? <TrendingDown className="w-10 h-10 text-red-400" />
+    : isInstantWin ? <Star className="w-10 h-10 text-yellow-400" />
+    : isAnyWin ? <Trophy className="w-10 h-10 text-emerald-400" />
+    : <BarChart2 className="w-10 h-10 text-orange-400" />;
+
+  const ringColor = isBankrupt ? "bg-red-500/10 border-red-500/40"
+    : isInstantWin ? "bg-yellow-500/10 border-yellow-500/40"
+    : isAnyWin ? "bg-emerald-500/10 border-emerald-500/40"
+    : "bg-orange-500/10 border-orange-500/40";
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <div className="max-w-lg w-full flex flex-col gap-6 text-center">
-        <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center border-2 ${
-          isBankrupt ? "bg-red-500/10 border-red-500/40" : isWinner ? "bg-emerald-500/10 border-emerald-500/40" : "bg-yellow-500/10 border-yellow-500/40"
-        }`}>
-          {isBankrupt ? <TrendingDown className="w-10 h-10 text-red-400" /> : isWinner ? <Trophy className="w-10 h-10 text-emerald-400" /> : <BarChart2 className="w-10 h-10 text-yellow-400" />}
+        <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center border-2 ${ringColor}`}>
+          {iconEl}
         </div>
 
         <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">{t.title}</h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">{t.sub}</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">{title}</h1>
+          <p className="text-muted-foreground text-sm leading-relaxed">{sub}</p>
         </div>
 
         <div className="bg-card border border-card-border rounded-xl p-5">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{t.rating}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{t("game_over.finalRating")}</p>
           <p className="text-2xl font-bold text-primary mb-4">{rating}</p>
           <div className="grid grid-cols-2 gap-3 text-sm">
             {[
-              { label: t.capital, value: formatMoney(player.capital), color: player.capital > 10_000_000 ? "text-emerald-400" : "text-red-400" },
-              { label: t.morale, value: `${player.morale}%`, color: player.morale >= 50 ? "text-blue-400" : "text-red-400" },
-              { label: t.share, value: `${player.marketShare.toFixed(1)}%`, color: player.marketShare > 50 ? "text-cyan-400" : "text-orange-400" },
-              { label: t.quarters, value: `${quarter - 1}/16`, color: "text-violet-400" },
+              { label: t("game_over.finalCapital"), value: formatCapital(player.capital), color: isAnyWin ? "text-emerald-400" : isBankrupt ? "text-red-400" : "text-foreground" },
+              { label: t("game_over.botCapital"), value: formatCapital(bot.capital), color: "text-red-400" },
+              { label: t("game_over.morale"), value: `${player.morale}%`, color: player.morale >= 50 ? "text-blue-400" : "text-red-400" },
+              { label: t("game_over.finalShare"), value: `${player.marketShare.toFixed(1)}%`, color: player.marketShare > 50 ? "text-cyan-400" : "text-orange-400" },
+              { label: t("game_over.quartersSurvived"), value: `${quarter - 1}/16`, color: "text-violet-400" },
             ].map((stat) => (
               <div key={stat.label} className="bg-secondary/50 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground mb-1">{stat.label}</p>
@@ -76,26 +72,27 @@ export function GameOver() {
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            useGameStore.setState({
-              phase: "intel",
-              quarter: 1,
-              player: { capital: 10000000, morale: 65, techLevel: 3, marketShare: 45, intelPoints: 3 },
-              draft: { price: 699, productionBudget: 80000, intelAllocation: 0 },
-              bot: { price: 749, productionBudget: 75000, capital: 10000000, marketShare: 55, lastMoveLabel: null, lastMoveTime: null },
-              quarterTimer: 60,
-              timerRunning: false,
-              currentEvent: null,
-              lastResolution: null,
-              intelAlerts: [],
-            });
-            startGame();
-          }}
-          className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors"
-        >
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{t("game_over.victoryConditions")}</p>
+          <div className="space-y-1.5 text-xs text-left">
+            {[
+              { label: t("game_over.instantWin"), active: isInstantWin, color: "text-yellow-400" },
+              { label: t("game_over.timeoutWin"), active: isTimeoutWin, color: "text-emerald-400" },
+              { label: t("game_over.bankrupt"), active: isBankrupt, color: "text-red-400" },
+            ].map((cond) => (
+              <div key={cond.label} className={`flex items-center gap-2 ${cond.active ? cond.color : "text-muted-foreground"}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${cond.active ? "bg-current" : "bg-muted"}`} />
+                {cond.label}
+                {cond.active && <span className="ml-auto font-semibold text-[10px] uppercase tracking-wider">← {isTimeoutLoss && cond.color === "text-red-400" ? "RESULT" : "ACHIEVED"}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={resetGame}
+          className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors">
           <RotateCcw className="w-4 h-4" />
-          {t.restart}
+          {t("game_over.restart")}
         </button>
       </div>
     </div>

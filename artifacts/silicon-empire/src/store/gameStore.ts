@@ -1,84 +1,77 @@
 import { create } from "zustand";
 import type {
   GamePhase,
+  GameResult,
   PlayerMetrics,
   PlayerDraft,
   BotState,
+  Executives,
+  Upgrades,
+  LoanState,
+  BiddingWar,
+  SabotageState,
   QuarterEvent,
   IntelAlert,
   ResolutionResult,
   MarketIntel,
+  BotScheduledAction,
 } from "./types";
 
 const QUARTER_DURATION = 60;
 const MAX_QUARTERS = 16;
+const INSTANT_WIN_CAPITAL = 1_000_000_000;
 
 const EVENTS: QuarterEvent[] = [
   {
-    id: "supply_crunch",
-    title: "Supply Chain Disruption",
-    description: "A major chip supplier is facing shortages. Production costs will spike unless you act now.",
-    type: "supply",
+    id: "supply_crunch", type: "supply",
+    en: { title: "Supply Chain Disruption", description: "A major chip supplier is facing shortages. Production costs will spike unless you act now." },
+    th: { title: "ปัญหาซัพพลายเชน", description: "ผู้จัดจำหน่ายชิพรายสำคัญกำลังเผชิญกับการขาดแคลน ต้นทุนการผลิตจะพุ่งสูงขึ้นหากคุณไม่ดำเนินการตอนนี้" },
     choices: [
-      { id: "stockpile", label: "Pre-buy Components (+$2M)", effect: { capital: -2000000, morale: 5 }, description: "Secure supply at current prices" },
-      { id: "pivot", label: "Pivot to Alternative Supplier", effect: { techLevel: -1, morale: -5 }, description: "Slower chips, but stable supply" },
-      { id: "wait", label: "Absorb the Impact", effect: { capital: -500000, morale: -10 }, description: "Hope the crisis resolves quickly" },
+      { id: "stockpile", effect: { capital: -2000000, morale: 5 }, en: { label: "Pre-buy Components (−$2M)", description: "Secure supply at current prices" }, th: { label: "ซื้อชิ้นส่วนล่วงหน้า (−$2M)", description: "ล็อคราคาซัพพลายก่อนที่จะแพงขึ้น" } },
+      { id: "pivot", effect: { techLevel: -1, morale: -5 }, en: { label: "Pivot to Alternative Supplier", description: "Slower chips, but stable supply" }, th: { label: "เปลี่ยนไปใช้ซัพพลายเออร์อื่น", description: "ชิพช้ากว่าแต่ซัพพลายมั่นคง" } },
+      { id: "wait", effect: { capital: -500000, morale: -10 }, en: { label: "Absorb the Impact", description: "Hope the crisis resolves quickly" }, th: { label: "รับผลกระทบ", description: "หวังว่าวิกฤติจะผ่านไปเร็วๆ" } },
     ],
   },
   {
-    id: "viral_buzz",
-    title: "Viral Product Leak",
-    description: "An unannounced feature leaked online and is trending. Consumer demand is surging.",
-    type: "market",
+    id: "viral_buzz", type: "market",
+    en: { title: "Viral Product Leak", description: "An unannounced feature leaked online and is trending. Consumer demand is surging." },
+    th: { title: "การรั่วไหลของผลิตภัณฑ์ที่กลายเป็นไวรัล", description: "ฟีเจอร์ที่ยังไม่ประกาศรั่วไหลและกำลังเป็นกระแส ความต้องการของผู้บริโภคกำลังพุ่งสูง" },
     choices: [
-      { id: "capitalize", label: "Launch Teaser Campaign (+Morale)", effect: { morale: 15, marketShare: 3 }, description: "Ride the hype wave" },
-      { id: "deny", label: "Issue Official Denial", effect: { morale: -5, capital: -200000 }, description: "Protect the surprise factor" },
-      { id: "ignore", label: "Ignore the Buzz", effect: { morale: 5 }, description: "Let the market speculate" },
+      { id: "capitalize", effect: { morale: 15, marketShare: 3 }, en: { label: "Launch Teaser Campaign", description: "Ride the hype wave" }, th: { label: "เปิดตัวแคมเปญทีเซอร์", description: "ขี่กระแสความฮือฮา" } },
+      { id: "deny", effect: { morale: -5, capital: -200000 }, en: { label: "Issue Official Denial", description: "Protect the surprise factor" }, th: { label: "ออกแถลงการณ์ปฏิเสธ", description: "ปกป้องความเซอร์ไพรส์" } },
+      { id: "ignore", effect: { morale: 5 }, en: { label: "Ignore the Buzz", description: "Let the market speculate" }, th: { label: "เพิกเฉยต่อกระแส", description: "ให้ตลาดคาดเดา" } },
     ],
   },
   {
-    id: "regulation_warning",
-    title: "New Data Privacy Regulation",
-    description: "Government signals upcoming data privacy laws. Early compliance costs capital but avoids future fines.",
-    type: "regulation",
+    id: "regulation_warning", type: "regulation",
+    en: { title: "New Data Privacy Regulation", description: "Government signals upcoming data privacy laws. Early compliance costs capital but avoids future fines." },
+    th: { title: "กฎระเบียบความเป็นส่วนตัวของข้อมูลใหม่", description: "รัฐบาลส่งสัญญาณเกี่ยวกับกฎหมายที่กำลังจะมา การปฏิบัติตามแต่เนิ่นๆ มีต้นทุนแต่หลีกเลี่ยงค่าปรับ" },
     choices: [
-      { id: "early_comply", label: "Comply Early (-$1.5M, +Morale)", effect: { capital: -1500000, morale: 20 }, description: "Lead with responsibility" },
-      { id: "wait_watch", label: "Monitor the Situation", effect: { morale: -5 }, description: "Defer until law passes" },
-      { id: "lobby", label: "Lobby Against It (-$800k)", effect: { capital: -800000, morale: -10 }, description: "Fight the regulation" },
+      { id: "early_comply", effect: { capital: -1500000, morale: 20 }, en: { label: "Comply Early (−$1.5M, +Morale)", description: "Lead with responsibility" }, th: { label: "ปฏิบัติตามแต่เนิ่นๆ (−$1.5M)", description: "นำด้วยความรับผิดชอบ" } },
+      { id: "wait_watch", effect: { morale: -5 }, en: { label: "Monitor the Situation", description: "Defer until law passes" }, th: { label: "ติดตามสถานการณ์", description: "รอจนกฎหมายผ่าน" } },
+      { id: "lobby", effect: { capital: -800000, morale: -10 }, en: { label: "Lobby Against It (−$800K)", description: "Fight the regulation" }, th: { label: "ล็อบบี้คัดค้าน (−$800K)", description: "ต่อสู้กับกฎระเบียบ" } },
     ],
   },
   {
-    id: "tech_breakthrough",
-    title: "R&D Breakthrough",
-    description: "Your engineers have made an unexpected breakthrough in battery technology.",
-    type: "tech",
+    id: "tech_breakthrough", type: "tech",
+    en: { title: "R&D Breakthrough", description: "Your engineers made an unexpected breakthrough in battery technology." },
+    th: { title: "การก้าวหน้าทางด้าน R&D", description: "วิศวกรของคุณค้นพบความก้าวหน้าที่ไม่คาดคิดเกี่ยวกับเทคโนโลยีแบตเตอรี่" },
     choices: [
-      { id: "integrate", label: "Fast-Track Integration (-$2M)", effect: { capital: -2000000, techLevel: 2, morale: 15 }, description: "Push it to market immediately" },
-      { id: "patent", label: "Patent & License Out (+$1M)", effect: { capital: 1000000, techLevel: 1, intelBonus: 2 }, description: "Monetize without full integration" },
-      { id: "shelve", label: "Shelve for Later", effect: { morale: -5 }, description: "Wait for the right moment" },
+      { id: "integrate", effect: { capital: -2000000, techLevel: 2, morale: 15 }, en: { label: "Fast-Track Integration (−$2M)", description: "Push it to market immediately" }, th: { label: "เร่งนำไปใช้ (−$2M)", description: "ผลักดันสู่ตลาดทันที" } },
+      { id: "patent", effect: { capital: 1000000, techLevel: 1, intelBonus: 2 }, en: { label: "Patent & License Out (+$1M)", description: "Monetize without full integration" }, th: { label: "จดสิทธิบัตรและอนุญาต (+$1M)", description: "สร้างรายได้โดยไม่ต้องรวมทั้งหมด" } },
+      { id: "shelve", effect: { morale: -5 }, en: { label: "Shelve for Later", description: "Wait for the right moment" }, th: { label: "เก็บไว้ก่อน", description: "รอเวลาที่เหมาะสม" } },
     ],
   },
   {
-    id: "talent_war",
-    title: "Talent War Heats Up",
-    description: "A competitor is poaching your key engineers with 50% salary bumps.",
-    type: "market",
+    id: "talent_war", type: "market",
+    en: { title: "Talent War Heats Up", description: "A competitor is poaching your key engineers with 50% salary bumps." },
+    th: { title: "การแย่งชิงความสามารถ", description: "คู่แข่งกำลังดึงวิศวกรหลักของคุณด้วยการขึ้นเงินเดือน 50%" },
     choices: [
-      { id: "counter_offer", label: "Counter-Offer Team (-$1M)", effect: { capital: -1000000, morale: 20 }, description: "Match competitor packages" },
-      { id: "recruit", label: "Aggressive Recruiting (-$500k)", effect: { capital: -500000, techLevel: 1 }, description: "Fill gaps with new talent" },
-      { id: "culture", label: "Invest in Culture & Equity", effect: { morale: 15, capital: -300000 }, description: "Long-term retention strategy" },
+      { id: "counter_offer", effect: { capital: -1000000, morale: 20 }, en: { label: "Counter-Offer Team (−$1M)", description: "Match competitor packages" }, th: { label: "เสนอค่าตอบแทนสูงกว่า (−$1M)", description: "แข่งกับแพ็คเกจคู่แข่ง" } },
+      { id: "recruit", effect: { capital: -500000, techLevel: 1 }, en: { label: "Aggressive Recruiting (−$500K)", description: "Fill gaps with new talent" }, th: { label: "สรรหาแบบเชิงรุก (−$500K)", description: "เติมช่องว่างด้วยบุคลากรใหม่" } },
+      { id: "culture", effect: { morale: 15, capital: -300000 }, en: { label: "Invest in Culture & Equity", description: "Long-term retention strategy" }, th: { label: "ลงทุนในวัฒนธรรมองค์กร", description: "กลยุทธ์ retention ระยะยาว" } },
     ],
   },
-];
-
-const MID_QUARTER_EVENTS = [
-  "Retail channels are reporting stronger-than-expected sell-through.",
-  "A trade publication just ranked your device #1 in value.",
-  "Consumer sentiment index ticked up 3 points this quarter.",
-  "Supply logistics are running ahead of schedule.",
-  "An industry report warns of market saturation in the mid-range tier.",
-  "Your brand recall score hit an all-time high in surveys.",
-  "Component costs dropped 8% due to oversupply in the market.",
 ];
 
 function pickRandom<T>(arr: T[]): T {
@@ -89,57 +82,44 @@ function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
 
-function generateMarketIntel(quarter: number, playerMetrics: PlayerMetrics): MarketIntel {
+const HINT_KEYS = ["h1", "h2", "h3", "h4", "h5"] as const;
+const BOT_HINT_KEYS = ["b1", "b2", "b3", "b4"] as const;
+const MID_KEYS = ["m1", "m2", "m3", "m4", "m5", "m6", "m7"] as const;
+
+function generateMarketIntel(playerMetrics: PlayerMetrics): MarketIntel {
   const trends = ["rising", "stable", "falling"] as const;
   const activities = ["aggressive", "passive", "unknown"] as const;
-  const demandTrend = trends[Math.floor(Math.random() * 3)];
-  const competitorActivity = activities[Math.floor(Math.random() * 3)];
-  const hints = [
-    "Component costs are stabilizing — margins may improve this quarter.",
-    "Consumer confidence is up. Premium pricing could outperform.",
-    "Emerging markets are heating up. Volume over margin might pay off.",
-    "Supply chain pressures easing. Competitors likely increasing production.",
-    "Tech media cycle favors innovation narratives this quarter.",
-  ];
-  const botHints = playerMetrics.intelPoints > 0
-    ? [
-        "Intercepted: Competitor is holding price steady.",
-        "Intel: Competitor is ramping production aggressively.",
-        "Signal: Competitor reducing R&D spend — defensive mode.",
-        "Chatter: Competitor board pushing for market share gains.",
-      ]
-    : null;
-
   return {
-    demandTrend,
-    competitorActivity,
-    hint: pickRandom(hints),
-    botHint: botHints ? pickRandom(botHints) : null,
+    demandTrend: trends[Math.floor(Math.random() * 3)],
+    competitorActivity: activities[Math.floor(Math.random() * 3)],
+    hintKey: `hints.${pickRandom([...HINT_KEYS])}`,
+    botHintKey: playerMetrics.intelPoints > 0 ? `hints.${pickRandom([...BOT_HINT_KEYS])}` : null,
   };
 }
 
-function generateBotSchedule(botState: BotState, quarter: number) {
-  const actions: { triggerAtSecond: number; label: string; type: "price" | "production" | "strategy"; delta: Partial<BotState> }[] = [];
-
+function generateBotSchedule(botState: BotState, quarter: number): BotScheduledAction[] {
+  const actions: BotScheduledAction[] = [];
   const aggression = Math.min(0.3 + quarter * 0.05, 0.9);
 
   if (Math.random() < 0.8) {
     const priceChange = (Math.random() < aggression ? -1 : 1) * (Math.floor(Math.random() * 5) + 2) * 10;
     actions.push({
       triggerAtSecond: Math.floor(Math.random() * 25) + 30,
+      executed: false,
       label: priceChange < 0 ? `Bot slashed price by $${Math.abs(priceChange)}!` : `Bot raised price by $${Math.abs(priceChange)}`,
       type: "price",
       delta: { price: clamp(botState.price + priceChange, 299, 1499) },
     });
   }
 
-  if (Math.random() < 0.6) {
-    const shift = (Math.random() < 0.5 ? -1 : 1) * Math.floor(Math.random() * 15 + 5) * 1000;
+  if (Math.random() < 0.7) {
+    const shift = (Math.random() < 0.55 ? -1 : 1) * Math.floor(Math.random() * 20 + 5) * 1000;
     actions.push({
       triggerAtSecond: Math.floor(Math.random() * 20) + 5,
-      label: shift > 0 ? "Bot ramped up production budget!" : "Bot cut production — going lean.",
+      executed: false,
+      label: shift > 0 ? "Bot ramped up production!" : "Bot cut production — going lean.",
       type: "production",
-      delta: { productionBudget: clamp(botState.productionBudget + shift, 30000, 150000) },
+      delta: { productionBudget: clamp(botState.productionBudget + shift, 30000, 200000) },
     });
   }
 
@@ -150,83 +130,144 @@ function resolveQuarter(
   player: PlayerMetrics,
   draft: PlayerDraft,
   bot: BotState,
-  quarter: number
+  executives: Executives,
+  upgrades: Upgrades,
+  loans: LoanState,
+  sabotage: SabotageState,
 ): ResolutionResult {
-  const MARKET_SIZE = 1000000;
-  const UNIT_COST = 200;
-  const MIN_PRICE = 299;
+  const BASE_UNIT_COST = 200;
+  const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
+  const baseUnitCost = BASE_UNIT_COST * factoryDiscount;
 
-  const playerPrice = Math.max(draft.price, MIN_PRICE);
-  const botPrice = Math.max(bot.price, MIN_PRICE);
+  let unitCostMultiplier = 1.0;
+  if (draft.productionBudget > 100_000) {
+    const excessRatio = (draft.productionBudget - 100_000) / 100_000;
+    unitCostMultiplier = 1 + Math.pow(excessRatio, 1.5) * 0.6;
+    if (executives.coo) unitCostMultiplier = Math.min(unitCostMultiplier, 1.35);
+  }
+  const effectiveUnitCost = baseUnitCost * unitCostMultiplier;
 
-  const playerUnitsCapacity = Math.floor((draft.productionBudget * 0.8) / UNIT_COST);
-  const botUnitsCapacity = Math.floor((bot.productionBudget * 0.8) / UNIT_COST);
+  const playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
 
-  const priceDiff = botPrice - playerPrice;
-  const priceAdvantage = clamp(priceDiff / 200, -0.4, 0.4);
+  const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
+  const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
+  const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.7) : botCapacityRaw;
+
+  const maxViablePrice = player.techLevel * 200;
+  let demandFactor = 1.0;
+  if (draft.price > maxViablePrice) {
+    demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
+  }
+
+  const priceDiff = bot.price - draft.price;
+  const priceAdvantage = clamp(priceDiff / 200, -0.45, 0.45);
   const techBonus = (player.techLevel - 3) * 0.05;
   const moraleBonus = (player.morale - 50) * 0.002;
+  const playerShareFactor = clamp(0.5 + priceAdvantage + techBonus + moraleBonus, 0.05, 0.95);
 
-  const playerDemandShare = clamp(0.5 + priceAdvantage + techBonus + moraleBonus, 0.15, 0.85);
-  const botDemandShare = 1 - playerDemandShare;
+  const TOTAL_MARKET = 800_000;
+  const playerRawDemand = Math.floor(TOTAL_MARKET * playerShareFactor * demandFactor);
+  const botShareFactor = sabotage.prPending ? (1 - playerShareFactor) * 0.93 : (1 - playerShareFactor);
+  const botRawDemand = Math.floor(TOTAL_MARKET * botShareFactor);
 
-  const totalDemand = Math.floor(MARKET_SIZE * 0.005 * (1 + (100 - playerPrice / 15) * 0.002));
+  const playerSales = Math.min(playerCapacity, playerRawDemand);
+  const botSales = Math.min(botCapacity, botRawDemand);
 
-  const playerSales = Math.min(playerUnitsCapacity, Math.floor(totalDemand * playerDemandShare));
-  const botSales = Math.min(botUnitsCapacity, Math.floor(totalDemand * botDemandShare));
+  const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
+  const eWasteRate = executives.cfo ? 0.7 : 1.0;
+  const eWastePenalty = Math.floor(playerUnsold / 100_000) * 5_000_000 * eWasteRate;
 
-  const playerRevenue = playerSales * playerPrice;
-  const playerCost = playerSales * UNIT_COST + draft.productionBudget * 0.2;
-  const playerProfit = playerRevenue - playerCost;
+  const playerRevenue = playerSales * draft.price;
+  const playerVariableCost = playerSales * effectiveUnitCost;
+  const playerFixedCost = draft.productionBudget * 0.2;
+  const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
+  const playerProfit = grossProfit - eWastePenalty;
 
-  const botRevenue = botSales * botPrice;
-  const botCost = botSales * UNIT_COST + bot.productionBudget * 0.2;
+  const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
+  const capitalChange = playerProfit - debtRepayment;
+
+  const botRevenue = botSales * bot.price;
+  const botCost = botSales * botBaseCost + bot.productionBudget * 0.2;
   const botProfit = botRevenue - botCost;
 
   const totalSales = playerSales + botSales;
   const newPlayerShare = totalSales > 0 ? (playerSales / totalSales) * 100 : player.marketShare;
-  const newBotShare = totalSales > 0 ? (botSales / totalSales) * 100 : bot.marketShare;
+  const newBotShare = 100 - newPlayerShare;
 
-  const moraleChange = playerSales > botSales ? 5 : playerSales < botSales ? -5 : 0;
+  const moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
+  const techGrowth = upgrades.legendaryEngineer ? 2 : 0;
 
-  const summaries = [
-    playerSales > botSales * 1.2 ? "Dominant quarter — your pricing strategy crushed the competition." : "",
-    playerSales < botSales * 0.8 ? "Rough quarter. The bot outmaneuvered you on volume." : "",
-    Math.abs(playerSales - botSales) < botSales * 0.1 ? "Neck-and-neck. Both sides fought hard for every unit." : "",
-    playerProfit > 500000 ? "Strong margins. Premium strategy paying off." : "",
-    playerProfit < 0 ? "You're burning cash. Reassess your cost structure." : "",
-  ].filter(Boolean);
+  let summaryKey = "summaries.default";
+  if (demandFactor < 0.3) summaryKey = "summaries.elasticity";
+  else if (eWastePenalty > 2_000_000) summaryKey = "summaries.ewaste";
+  else if (playerSales > botSales * 1.3) summaryKey = "summaries.dominant";
+  else if (playerSales < botSales * 0.7) summaryKey = "summaries.rough";
+  else if (debtRepayment > 0) summaryKey = "summaries.debt";
+  else if (capitalChange < 0) summaryKey = "summaries.burning";
+  else if (playerSales > botSales && capitalChange > 500_000) summaryKey = "summaries.strong";
+  else summaryKey = "summaries.neckAndNeck";
 
   return {
     playerSalesUnits: playerSales,
     botSalesUnits: botSales,
     playerRevenue,
     botRevenue,
+    grossProfit,
     playerProfit,
     botProfit,
-    newPlayerMarketShare: clamp(newPlayerShare, 5, 95),
-    newBotMarketShare: clamp(newBotShare, 5, 95),
-    capitalChange: playerProfit,
+    newPlayerMarketShare: clamp(newPlayerShare, 3, 97),
+    newBotMarketShare: clamp(newBotShare, 3, 97),
+    capitalChange,
     moraleChange,
-    summary: summaries[0] || "Quarter resolved. Study the numbers.",
+    eWastePenalty,
+    eWasteUnits: playerUnsold,
+    debtRepayment,
+    techGrowth,
+    effectiveUnitCost,
+    playerCapacity,
+    playerRawDemand,
+    demandFactor,
+    summaryKey,
   };
 }
+
+const INITIAL_PLAYER: PlayerMetrics = { capital: 10_000_000, morale: 65, techLevel: 3, marketShare: 45, intelPoints: 3 };
+const INITIAL_DRAFT: PlayerDraft = { price: 699, productionBudget: 80_000, intelAllocation: 0 };
+const INITIAL_BOT: BotState = { price: 749, productionBudget: 75_000, capital: 10_000_000, marketShare: 55, lastMoveLabel: null, lastMoveTime: null, hasFactory: false };
+const INITIAL_EXECUTIVES: Executives = { cfo: false, coo: false };
+const INITIAL_UPGRADES: Upgrades = { componentFactory: false, legendaryEngineer: false };
+const INITIAL_LOANS: LoanState = { outstanding: 0, quartersRemaining: 0, repaymentPerQuarter: 0 };
+const INITIAL_SABOTAGE: SabotageState = { ddosPending: false, prPending: false, cooldown: false };
 
 interface GameState {
   phase: GamePhase;
   quarter: number;
+  gameResult: GameResult;
+  language: "en" | "th";
+
   player: PlayerMetrics;
   draft: PlayerDraft;
   bot: BotState;
+
   quarterTimer: number;
   timerRunning: boolean;
+  playerReady: boolean;
+  botLocked: boolean;
+  botLockTime: number;
+
   currentEvent: QuarterEvent | null;
   marketIntel: MarketIntel | null;
   intelAlerts: IntelAlert[];
+  midQuarterEventKey: string | null;
+  botSchedule: BotScheduledAction[];
+
+  executives: Executives;
+  upgrades: Upgrades;
+  loans: LoanState;
+  biddingWar: BiddingWar | null;
+  sabotage: SabotageState;
+
   lastResolution: ResolutionResult | null;
-  midQuarterEvents: string[];
-  botSchedule: { triggerAtSecond: number; label: string; type: "price" | "production" | "strategy"; delta: Partial<BotState>; executed: boolean }[];
-  language: "en" | "th";
 
   startGame: () => void;
   advanceToEvent: () => void;
@@ -234,12 +275,21 @@ interface GameState {
   startActionPhase: () => void;
   tickTimer: () => void;
   updateDraft: (partial: Partial<PlayerDraft>) => void;
-  triggerBotAction: (index: number) => void;
   addIntelAlert: (alert: Omit<IntelAlert, "id" | "timestamp">) => void;
   dismissIntelAlert: (id: string) => void;
+  submitReady: () => void;
   lockAndResolve: () => void;
   nextQuarter: () => void;
   toggleLanguage: () => void;
+
+  hireExecutive: (type: "cfo" | "coo") => void;
+  purchaseUpgrade: (type: "componentFactory" | "legendaryEngineer") => void;
+  takeOutLoan: () => void;
+  acceptBiddingWar: () => void;
+  withdrawBiddingWar: () => void;
+  launchSabotage: (type: "ddos" | "pr") => void;
+  resetGame: () => void;
+
   playHoverSound: () => void;
   playClickSound: () => void;
   playTurnEndSound: () => void;
@@ -248,40 +298,37 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
   phase: "intel",
   quarter: 1,
-  player: {
-    capital: 10000000,
-    morale: 65,
-    techLevel: 3,
-    marketShare: 45,
-    intelPoints: 3,
-  },
-  draft: {
-    price: 699,
-    productionBudget: 80000,
-    intelAllocation: 0,
-  },
-  bot: {
-    price: 749,
-    productionBudget: 75000,
-    capital: 10000000,
-    marketShare: 55,
-    lastMoveLabel: null,
-    lastMoveTime: null,
-  },
+  gameResult: "playing",
+  language: "en",
+
+  player: { ...INITIAL_PLAYER },
+  draft: { ...INITIAL_DRAFT },
+  bot: { ...INITIAL_BOT },
+
   quarterTimer: QUARTER_DURATION,
   timerRunning: false,
+  playerReady: false,
+  botLocked: false,
+  botLockTime: 20,
+
   currentEvent: null,
   marketIntel: null,
   intelAlerts: [],
-  lastResolution: null,
-  midQuarterEvents: [],
+  midQuarterEventKey: null,
   botSchedule: [],
-  language: "en",
+
+  executives: { ...INITIAL_EXECUTIVES },
+  upgrades: { ...INITIAL_UPGRADES },
+  loans: { ...INITIAL_LOANS },
+  biddingWar: null,
+  sabotage: { ...INITIAL_SABOTAGE },
+
+  lastResolution: null,
 
   startGame: () => {
     const state = get();
-    const intel = generateMarketIntel(1, state.player);
-    set({ phase: "intel", quarter: 1, marketIntel: intel });
+    const intel = generateMarketIntel(state.player);
+    set({ phase: "intel", quarter: 1, marketIntel: intel, gameResult: "playing" });
   },
 
   advanceToEvent: () => {
@@ -289,33 +336,38 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ phase: "event", currentEvent: event });
   },
 
-  resolveEvent: (choiceId: string) => {
+  resolveEvent: (choiceId) => {
     const { currentEvent, player } = get();
     if (!currentEvent) return;
     const choice = currentEvent.choices.find((c) => c.id === choiceId);
     if (!choice) return;
-    const newPlayer: PlayerMetrics = {
-      capital: clamp((player.capital + (choice.effect.capital || 0)), 0, Infinity),
-      morale: clamp(player.morale + (choice.effect.morale || 0), 0, 100),
-      techLevel: clamp(player.techLevel + (choice.effect.techLevel || 0), 1, 10),
-      marketShare: clamp(player.marketShare + (choice.effect.marketShare || 0), 0, 100),
-      intelPoints: clamp(player.intelPoints + (choice.effect.intelBonus || 0), 0, 20),
-    };
-    set({ player: newPlayer, currentEvent: null });
-    get().playClickSound();
+    set({
+      player: {
+        capital: clamp(player.capital + (choice.effect.capital || 0), 0, Infinity),
+        morale: clamp(player.morale + (choice.effect.morale || 0), 0, 100),
+        techLevel: clamp(player.techLevel + (choice.effect.techLevel || 0), 1, 10),
+        marketShare: clamp(player.marketShare + (choice.effect.marketShare || 0), 0, 100),
+        intelPoints: clamp(player.intelPoints + (choice.effect.intelBonus || 0), 0, 20),
+      },
+      currentEvent: null,
+    });
   },
 
   startActionPhase: () => {
     const { bot, quarter } = get();
-    const schedule = generateBotSchedule(bot, quarter).map((a) => ({ ...a, executed: false }));
-    const midEvents = Math.random() < 0.5 ? [pickRandom(MID_QUARTER_EVENTS)] : [];
+    const schedule = generateBotSchedule(bot, quarter);
+    const midKey = Math.random() < 0.6 ? `mid_events.${pickRandom([...MID_KEYS])}` : null;
+    const botLockTime = Math.floor(Math.random() * 16) + 15;
     set({
       phase: "action",
       quarterTimer: QUARTER_DURATION,
       timerRunning: true,
       botSchedule: schedule,
-      midQuarterEvents: midEvents,
+      midQuarterEventKey: midKey,
       intelAlerts: [],
+      playerReady: false,
+      botLocked: false,
+      botLockTime,
       bot: { ...bot, lastMoveLabel: null, lastMoveTime: null },
     });
   },
@@ -325,18 +377,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!state.timerRunning || state.phase !== "action") return;
 
     const newTimer = state.quarterTimer - 1;
-
     if (newTimer <= 0) {
-      set({ quarterTimer: 0, timerRunning: false });
+      set({ quarterTimer: 0, timerRunning: false, playerReady: false, botLocked: false });
       get().lockAndResolve();
       return;
     }
 
     const elapsed = QUARTER_DURATION - newTimer;
-    const pendingActions = state.botSchedule.filter(
-      (a) => !a.executed && a.triggerAtSecond <= elapsed
-    );
 
+    let newBotLocked = state.botLocked;
+    if (!state.botLocked && elapsed >= state.botLockTime) {
+      newBotLocked = true;
+      if (state.playerReady) {
+        set({ quarterTimer: 0, timerRunning: false, playerReady: false, botLocked: false });
+        get().lockAndResolve();
+        return;
+      }
+    }
+
+    const pendingActions = state.botSchedule.filter((a) => !a.executed && a.triggerAtSecond <= elapsed);
     let newBot = { ...state.bot };
     let newSchedule = [...state.botSchedule];
     const newAlerts: IntelAlert[] = [];
@@ -347,83 +406,210 @@ export const useGameStore = create<GameState>((set, get) => ({
         a.triggerAtSecond === action.triggerAtSecond ? { ...a, executed: true } : a
       );
       if (state.draft.intelAllocation > 0) {
-        newAlerts.push({
-          id: `alert-${Date.now()}-${action.triggerAtSecond}`,
-          message: `INTEL: ${action.label}`,
-          timestamp: Date.now(),
-          type: action.type,
-        });
+        newAlerts.push({ id: `alert-${Date.now()}-${action.triggerAtSecond}`, message: `INTEL: ${action.label}`, timestamp: Date.now(), type: action.type });
       }
     }
 
-    if (newTimer === 30 && state.midQuarterEvents.length > 0) {
-      newAlerts.push({
-        id: `mid-${Date.now()}`,
-        message: `MARKET: ${state.midQuarterEvents[0]}`,
-        timestamp: Date.now(),
-        type: "strategy",
-      });
+    if (newTimer === 30 && state.midQuarterEventKey) {
+      newAlerts.push({ id: `mid-${Date.now()}`, message: `MARKET: [mid-quarter event]`, timestamp: Date.now(), type: "strategy" });
     }
 
     set({
       quarterTimer: newTimer,
       bot: newBot,
       botSchedule: newSchedule,
-      intelAlerts: [...state.intelAlerts, ...newAlerts].slice(-5),
+      botLocked: newBotLocked,
+      intelAlerts: [...state.intelAlerts, ...newAlerts].slice(-6),
     });
   },
 
-  updateDraft: (partial) => {
-    set((s) => ({ draft: { ...s.draft, ...partial } }));
-  },
+  updateDraft: (partial) => set((s) => ({ draft: { ...s.draft, ...partial } })),
 
-  triggerBotAction: () => {},
+  addIntelAlert: (alert) => set((s) => ({
+    intelAlerts: [...s.intelAlerts, { ...alert, id: `alert-${Date.now()}`, timestamp: Date.now() }].slice(-6),
+  })),
 
-  addIntelAlert: (alert) => {
-    set((s) => ({
-      intelAlerts: [
-        ...s.intelAlerts,
-        { ...alert, id: `alert-${Date.now()}`, timestamp: Date.now() },
-      ].slice(-5),
-    }));
-  },
+  dismissIntelAlert: (id) => set((s) => ({ intelAlerts: s.intelAlerts.filter((a) => a.id !== id) })),
 
-  dismissIntelAlert: (id) => {
-    set((s) => ({ intelAlerts: s.intelAlerts.filter((a) => a.id !== id) }));
+  submitReady: () => {
+    const { botLocked } = get();
+    set({ playerReady: true });
+    if (botLocked) {
+      set({ quarterTimer: 0, timerRunning: false, playerReady: false, botLocked: false });
+      get().lockAndResolve();
+    }
   },
 
   lockAndResolve: () => {
-    const { player, draft, bot, quarter } = get();
+    const { player, draft, bot, executives, upgrades, loans, sabotage, quarter } = get();
     get().playTurnEndSound();
-    const result = resolveQuarter(player, draft, bot, quarter);
+    const result = resolveQuarter(player, draft, bot, executives, upgrades, loans, sabotage);
+
+    const newCapital = clamp(player.capital + result.capitalChange, 0, Infinity);
+    const newTech = clamp(player.techLevel + result.techGrowth, 1, 10);
     const newPlayer: PlayerMetrics = {
-      capital: clamp(player.capital + result.capitalChange, 0, Infinity),
+      capital: newCapital,
       morale: clamp(player.morale + result.moraleChange, 0, 100),
-      techLevel: player.techLevel,
+      techLevel: newTech,
       marketShare: result.newPlayerMarketShare,
       intelPoints: clamp(player.intelPoints - draft.intelAllocation + 1, 0, 20),
     };
-    const newBot: BotState = {
-      ...bot,
-      capital: clamp(bot.capital + result.botProfit, 0, Infinity),
-      marketShare: result.newBotMarketShare,
-    };
-    set({ phase: "resolution", player: newPlayer, bot: newBot, lastResolution: result });
+
+    let newLoans = { ...loans };
+    if (loans.quartersRemaining > 0) {
+      newLoans = { ...loans, quartersRemaining: loans.quartersRemaining - 1, outstanding: Math.max(0, loans.outstanding - loans.repaymentPerQuarter) };
+    }
+
+    const botCapitalGain = result.botProfit;
+    const newBot: BotState = { ...bot, capital: clamp(bot.capital + botCapitalGain, 0, Infinity), marketShare: result.newBotMarketShare };
+
+    let newBotWithFactory = newBot;
+    if (!bot.hasFactory && newBot.capital > 150_000_000 && quarter > 4 && Math.random() < 0.3) {
+      newBotWithFactory = { ...newBot, hasFactory: true };
+      if (draft.intelAllocation > 0) {
+        get().addIntelAlert({ message: "ALERT: Competitor acquired a Component Factory!", type: "strategy" });
+      }
+    }
+
+    let gameResult: GameResult = "playing";
+    if (newCapital <= 0) gameResult = "bankrupt";
+    else if (newCapital >= INSTANT_WIN_CAPITAL) gameResult = "won_instant";
+
+    set({
+      phase: "resolution",
+      player: newPlayer,
+      bot: newBotWithFactory,
+      loans: newLoans,
+      lastResolution: result,
+      gameResult,
+      sabotage: { ...sabotage, ddosPending: false, prPending: false },
+    });
   },
 
   nextQuarter: () => {
-    const { quarter, player } = get();
-    if (quarter >= MAX_QUARTERS || player.capital <= 0) {
+    const { quarter, player, bot, gameResult } = get();
+
+    if (gameResult !== "playing") {
       set({ phase: "gameover" });
       return;
     }
+
+    if (quarter >= MAX_QUARTERS) {
+      const finalResult: GameResult = player.capital > bot.capital ? "won_timeout" : "won_timeout_lost";
+      set({ phase: "gameover", gameResult: finalResult });
+      return;
+    }
+
     const nextQ = quarter + 1;
-    const intel = generateMarketIntel(nextQ, player);
-    set({ phase: "intel", quarter: nextQ, marketIntel: intel, lastResolution: null });
+    const intel = generateMarketIntel(player);
+    set({
+      phase: "intel",
+      quarter: nextQ,
+      marketIntel: intel,
+      lastResolution: null,
+      sabotage: { ddosPending: false, prPending: false, cooldown: false },
+    });
   },
 
-  toggleLanguage: () => {
-    set((s) => ({ language: s.language === "en" ? "th" : "en" }));
+  toggleLanguage: () => set((s) => ({ language: s.language === "en" ? "th" : "en" })),
+
+  hireExecutive: (type) => {
+    const { player, executives, phase } = get();
+    if (phase === "action") return;
+    if (executives[type]) return;
+    const cost = 40_000_000;
+    if (player.capital < cost) return;
+    set({ player: { ...player, capital: player.capital - cost }, executives: { ...executives, [type]: true } });
+  },
+
+  purchaseUpgrade: (type) => {
+    const { player, upgrades, executives, phase } = get();
+    if (phase === "action") return;
+    if (upgrades[type]) return;
+    const costs: Record<string, number> = { componentFactory: 150_000_000, legendaryEngineer: 80_000_000 };
+    const cost = costs[type];
+    if (player.capital < cost) return;
+
+    if (type === "legendaryEngineer" && Math.random() < 0.4) {
+      set({ player: { ...player, capital: player.capital - cost }, biddingWar: { active: true, engineerSigned: null } });
+      return;
+    }
+    set({ player: { ...player, capital: player.capital - cost }, upgrades: { ...upgrades, [type]: true } });
+  },
+
+  takeOutLoan: () => {
+    const { player, loans, executives, phase } = get();
+    if (phase === "action") return;
+    const repayment = executives.cfo ? 25_000_000 : 30_000_000;
+    set({
+      player: { ...player, capital: player.capital + 100_000_000 },
+      loans: {
+        outstanding: loans.outstanding + 100_000_000,
+        quartersRemaining: loans.quartersRemaining + 4,
+        repaymentPerQuarter: repayment,
+      },
+    });
+  },
+
+  acceptBiddingWar: () => {
+    const { player, upgrades } = get();
+    const extraCost = 20_000_000;
+    if (player.capital < extraCost) {
+      set({ biddingWar: { active: false, engineerSigned: false } });
+      return;
+    }
+    set({
+      player: { ...player, capital: player.capital - extraCost },
+      upgrades: { ...upgrades, legendaryEngineer: true },
+      biddingWar: { active: false, engineerSigned: true },
+    });
+  },
+
+  withdrawBiddingWar: () => {
+    const { player } = get();
+    set({
+      player: { ...player, capital: player.capital + 80_000_000 },
+      biddingWar: { active: false, engineerSigned: false },
+    });
+  },
+
+  launchSabotage: (type) => {
+    const { player, sabotage, phase } = get();
+    if (phase === "action" || sabotage.cooldown) return;
+    if (type === "ddos") {
+      if (player.capital < 10_000_000 || player.intelPoints < 3) return;
+      set({ player: { ...player, capital: player.capital - 10_000_000, intelPoints: player.intelPoints - 3 }, sabotage: { ...sabotage, ddosPending: true, cooldown: true } });
+    } else {
+      if (player.capital < 5_000_000 || player.intelPoints < 2) return;
+      set({ player: { ...player, capital: player.capital - 5_000_000, intelPoints: player.intelPoints - 2 }, sabotage: { ...sabotage, prPending: true, cooldown: true } });
+    }
+  },
+
+  resetGame: () => {
+    set({
+      phase: "intel",
+      quarter: 1,
+      gameResult: "playing",
+      player: { ...INITIAL_PLAYER },
+      draft: { ...INITIAL_DRAFT },
+      bot: { ...INITIAL_BOT },
+      quarterTimer: QUARTER_DURATION,
+      timerRunning: false,
+      playerReady: false,
+      botLocked: false,
+      botLockTime: 20,
+      currentEvent: null,
+      marketIntel: generateMarketIntel(INITIAL_PLAYER),
+      intelAlerts: [],
+      midQuarterEventKey: null,
+      botSchedule: [],
+      executives: { ...INITIAL_EXECUTIVES },
+      upgrades: { ...INITIAL_UPGRADES },
+      loans: { ...INITIAL_LOANS },
+      biddingWar: null,
+      sabotage: { ...INITIAL_SABOTAGE },
+      lastResolution: null,
+    });
   },
 
   playHoverSound: () => {},

@@ -1,0 +1,29 @@
+Act as an Expert Full-Stack Game Developer and UI/UX Designer. I want to build a web-based business simulation game called "Silicon Empire" (MVP version). The game is a turn-based strategy where the player acts as a CEO of a smartphone company (e.g., gufuton inc.), playing against a Bot, with architecture ready for future WebSocket multiplayer. 
+
+Target playtime: 10-20 minutes (approx. 12-20 quarters/turns).
+
+**Tech Stack & Architecture Requirements:**
+1. Framework: Next.js (React) or React + Vite (must be easy to deploy to Vercel).
+2. Styling: Tailwind CSS (Modern Corporate/Executive Dashboard theme, Dark Mode default).
+3. State Management: Zustand (Keep game logic, state, and UI strictly separated so it's easy to plug in a multiplayer backend later).
+4. i18n: React-i18next for bilingual support (English and Thai). Implement a language toggle.
+5. Version Control: Set up standard project structure ready for Git commit.
+
+**Core Game Mechanics (Quarterly Loop):**
+The game operates in "Quarters". Each Quarter has 4 phases:
+1. Intelligence Phase: Show market trends and a hint of bot activity.
+2. Event Phase: A random dynamic event occurs (e.g., short-term supply chain issue, or long-term regulation warning). Player must make a choice.
+3. Action Phase: Player manages resources.
+   - Production & Logistics: Allocate budget to Components -> Assembly -> Shipping. (Balancing bottlenecks).
+   - HR & Espionage: Spend 'Intel Points' to hire temporary buffs (e.g., Supply Chain Manager) or spy on the Bot's price/strategy.
+   - Pricing: Set the smartphone price for the quarter.
+4. Resolution Phase: Calculate sales, market share, and capital changes against the Bot's hidden actions.
+
+**UI/UX Requirements:**
+1. Executive Dashboard: The main view. Must always display key metrics at the top: Capital ($), Morale (%), Tech Level, Market Share (%), and Intel Points.
+2. Layout: Use a sidebar for navigation (Overview, Production, HR/Intel, Market) and a main content area for the current phase actions.
+3. Audio Hooks: Add placeholder functions for Sound Effects (e.g., `playHoverSound()`, `playClickSound()`, `playTurnEndSound()`) so I can easily add audio files later.
+4. Feedback: Use toast notifications or modular popups for event results and phase transitions.
+
+**Initial Task:**
+Please initialize the project, set up the folder structure (components, store, utils, locales), and build the main Dashboard UI shell with the Header (Metrics + Language Toggle) and the layout for the Action Phase. Provide dummy state data in Zustand to demonstrate the UI.

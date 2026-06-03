@@ -1,368 +1,437 @@
+// ===== SILICON EMPIRE v3 — Game Store =====
+// Zustand store หลักของเกม ควบคุมทุก state และ action
+
 import { create } from "zustand";
 import type {
-  GamePhase,
-  GameResult,
-  PlayerMetrics,
-  PlayerDraft,
-  BotState,
-  Executives,
-  Upgrades,
-  LoanState,
-  BiddingWar,
-  SabotageState,
-  QuarterEvent,
-  IntelAlert,
-  ResolutionResult,
-  MarketIntel,
-  BotScheduledAction,
+  GamePhase, GameResult, PlayerMetrics, PlayerDraft, BotState,
+  Executives, Upgrades, LoanState, BiddingWar, SabotageState,
+  AntitrustState, ComponentsState, BoardDirective, QuarterEvent,
+  IntelAlert, ResolutionResult, MarketIntel, BotScheduledAction,
+  CapitalHistoryEntry,
 } from "./types";
 
-const QUARTER_DURATION = 60;
-const MAX_QUARTERS = 16;
-const INSTANT_WIN_CAPITAL = 50_000_000;
+// ===== CONSTANTS =====
+const QUARTER_DURATION = 60;              // เวลาต่อไตรมาส (วินาที)
+const MAX_QUARTERS = 16;                  // จำนวนไตรมาสทั้งหมด
+const INSTANT_WIN_CAPITAL = 1_000_000_000; // เงื่อนไขชนะทันที: $1B
+const BASE_UNIT_COST = 200;               // ต้นทุนฐานต่อหน่วย $200
+const TOTAL_MARKET = 5_000_000;           // ตลาดรวม 5 ล้านหน่วย (v3: เพิ่มสเกล)
 
+// ต้นทุน EcoTech สำหรับ upgrade component แต่ละระดับ
+// index = ระดับที่จะ upgrade ไป (L1→L2=index 2, L2→L3=index 3, ฯลฯ)
+const COMPONENT_UPGRADE_COSTS: Record<keyof ComponentsState, number[]> = {
+  chip:    [0, 0, 3, 5, 8, 12],  // โปรเซสเซอร์
+  battery: [0, 0, 2, 4, 6, 9],   // แบตเตอรี่
+  display: [0, 0, 3, 5, 8, 11],  // หน้าจอ
+  memory:  [0, 0, 2, 3, 5, 8],   // หน่วยความจำ
+};
+
+// pool ของ Board Directives ทั้งหมด — สุ่ม 3 ตัวต่อไตรมาส
+const ALL_DIRECTIVES: BoardDirective[] = [
+  "aggressive_rd", "austerity", "market_expansion",
+  "brand_campaign", "cost_cutting", "talent_retention",
+  "premium_focus", "volume_play",
+];
+
+// Events ที่สุ่มเกิดขึ้นในแต่ละไตรมาส
 const EVENTS: QuarterEvent[] = [
   {
     id: "supply_crunch", type: "supply",
-    en: { title: "Supply Chain Disruption", description: "A major chip supplier is facing shortages. Production costs will spike unless you act now." },
-    th: { title: "ปัญหาซัพพลายเชน", description: "ผู้จัดจำหน่ายชิพรายสำคัญกำลังเผชิญกับการขาดแคลน ต้นทุนการผลิตจะพุ่งสูงขึ้นหากคุณไม่ดำเนินการตอนนี้" },
+    en: { title: "Supply Chain Disruption", description: "A major chip supplier faces shortages. Production costs will spike unless you act now." },
+    th: { title: "ปัญหาซัพพลายเชน", description: "ผู้จัดจำหน่ายชิพรายสำคัญขาดแคลน ต้นทุนการผลิตจะพุ่งสูงหากคุณไม่ดำเนินการ" },
     choices: [
-      { id: "stockpile", effect: { capital: -2000000, morale: 5 }, en: { label: "Pre-buy Components (−$2M)", description: "Secure supply at current prices" }, th: { label: "ซื้อชิ้นส่วนล่วงหน้า (−$2M)", description: "ล็อคราคาซัพพลายก่อนที่จะแพงขึ้น" } },
-      { id: "pivot", effect: { techLevel: -1, morale: -5 }, en: { label: "Pivot to Alternative Supplier", description: "Slower chips, but stable supply" }, th: { label: "เปลี่ยนไปใช้ซัพพลายเออร์อื่น", description: "ชิพช้ากว่าแต่ซัพพลายมั่นคง" } },
-      { id: "wait", effect: { capital: -500000, morale: -10 }, en: { label: "Absorb the Impact", description: "Hope the crisis resolves quickly" }, th: { label: "รับผลกระทบ", description: "หวังว่าวิกฤติจะผ่านไปเร็วๆ" } },
+      { id: "stockpile", effect: { capital: -5_000_000, morale: 5 }, en: { label: "Pre-buy Components (−$5M)", description: "Lock in current pricing" }, th: { label: "ซื้อชิ้นส่วนล่วงหน้า (−$5M)", description: "ล็อคราคาก่อนที่จะแพงขึ้น" } },
+      { id: "pivot", effect: { techLevel: -1, morale: -5 }, en: { label: "Use Alternative Supplier", description: "Slower components, stable supply" }, th: { label: "เปลี่ยนซัพพลายเออร์", description: "ชิ้นส่วนช้าลงแต่ซัพพลายมั่นคง" } },
+      { id: "absorb", effect: { capital: -2_000_000, morale: -10 }, en: { label: "Absorb the Cost (−$2M)", description: "Pay the premium, hope it resolves" }, th: { label: "รับต้นทุนเพิ่ม (−$2M)", description: "จ่ายส่วนต่าง หวังว่าจะผ่านเร็วๆ" } },
     ],
   },
   {
     id: "viral_buzz", type: "market",
     en: { title: "Viral Product Leak", description: "An unannounced feature leaked online and is trending. Consumer demand is surging." },
-    th: { title: "การรั่วไหลของผลิตภัณฑ์ที่กลายเป็นไวรัล", description: "ฟีเจอร์ที่ยังไม่ประกาศรั่วไหลและกำลังเป็นกระแส ความต้องการของผู้บริโภคกำลังพุ่งสูง" },
+    th: { title: "ผลิตภัณฑ์รั่วไหลเป็นไวรัล", description: "ฟีเจอร์ที่ยังไม่ประกาศรั่วไหลและกำลังเป็นกระแส ความต้องการพุ่งสูง" },
     choices: [
-      { id: "capitalize", effect: { morale: 15, marketShare: 3 }, en: { label: "Launch Teaser Campaign", description: "Ride the hype wave" }, th: { label: "เปิดตัวแคมเปญทีเซอร์", description: "ขี่กระแสความฮือฮา" } },
-      { id: "deny", effect: { morale: -5, capital: -200000 }, en: { label: "Issue Official Denial", description: "Protect the surprise factor" }, th: { label: "ออกแถลงการณ์ปฏิเสธ", description: "ปกป้องความเซอร์ไพรส์" } },
-      { id: "ignore", effect: { morale: 5 }, en: { label: "Ignore the Buzz", description: "Let the market speculate" }, th: { label: "เพิกเฉยต่อกระแส", description: "ให้ตลาดคาดเดา" } },
+      { id: "capitalize", effect: { morale: 15, marketShare: 3 }, en: { label: "Launch Teaser Campaign", description: "Ride the hype wave (+Brand)" }, th: { label: "เปิดตัวแคมเปญทีเซอร์", description: "ขี่กระแสความฮือฮา (+แบรนด์)" } },
+      { id: "deny", effect: { morale: -5, capital: -1_000_000 }, en: { label: "Issue Denial (−$1M)", description: "Protect the surprise" }, th: { label: "ออกแถลงการณ์ปฏิเสธ (−$1M)", description: "ปกป้องความเซอร์ไพรส์" } },
+    ],
+  },
+  {
+    id: "hire_researcher", type: "research",
+    en: { title: "Top Researcher Available", description: "A senior AI researcher from a failing startup wants to join your R&D team. Cost: $8M. Grants +6 EcoTech." },
+    th: { title: "นักวิจัยชั้นนำพร้อมรับสมัคร", description: "นักวิจัย AI อาวุโสจาก startup ที่กำลังล้มต้องการเข้าร่วม R&D ค่าจ้าง $8M รับ +6 EcoTech" },
+    choices: [
+      { id: "hire", effect: { capital: -8_000_000, ecotechBonus: 6 }, en: { label: "Hire Researcher (−$8M, +6 EcoTech)", description: "Long-term R&D investment" }, th: { label: "จ้างนักวิจัย (−$8M, +6 EcoTech)", description: "การลงทุน R&D ระยะยาว" } },
+      { id: "poach_for_less", effect: { capital: -4_000_000, ecotechBonus: 2 }, en: { label: "Hire as Contractor (−$4M, +2 EcoTech)", description: "Partial benefit, lower commitment" }, th: { label: "จ้างแบบ Contract (−$4M, +2 EcoTech)", description: "ได้ประโยชน์บางส่วน ลงทุนน้อยกว่า" } },
+      { id: "pass", effect: { morale: -3 }, en: { label: "Pass on this Opportunity", description: "Miss the chance, team morale drops" }, th: { label: "ปฏิเสธโอกาสนี้", description: "พลาดโอกาส ขวัญกำลังใจลดลง" } },
     ],
   },
   {
     id: "regulation_warning", type: "regulation",
-    en: { title: "New Data Privacy Regulation", description: "Government signals upcoming data privacy laws. Early compliance costs capital but avoids future fines." },
-    th: { title: "กฎระเบียบความเป็นส่วนตัวของข้อมูลใหม่", description: "รัฐบาลส่งสัญญาณเกี่ยวกับกฎหมายที่กำลังจะมา การปฏิบัติตามแต่เนิ่นๆ มีต้นทุนแต่หลีกเลี่ยงค่าปรับ" },
+    en: { title: "Data Privacy Regulation Incoming", description: "Government signals upcoming privacy laws. Early compliance costs capital but avoids future penalties." },
+    th: { title: "กฎระเบียบความเป็นส่วนตัวกำลังมา", description: "รัฐบาลส่งสัญญาณกฎหมาย privacy ที่กำลังจะมา ปฏิบัติตามเนิ่นๆ เสียเงินแต่หลีกเลี่ยงค่าปรับในอนาคต" },
     choices: [
-      { id: "early_comply", effect: { capital: -1500000, morale: 20 }, en: { label: "Comply Early (−$1.5M, +Morale)", description: "Lead with responsibility" }, th: { label: "ปฏิบัติตามแต่เนิ่นๆ (−$1.5M)", description: "นำด้วยความรับผิดชอบ" } },
-      { id: "wait_watch", effect: { morale: -5 }, en: { label: "Monitor the Situation", description: "Defer until law passes" }, th: { label: "ติดตามสถานการณ์", description: "รอจนกฎหมายผ่าน" } },
-      { id: "lobby", effect: { capital: -800000, morale: -10 }, en: { label: "Lobby Against It (−$800K)", description: "Fight the regulation" }, th: { label: "ล็อบบี้คัดค้าน (−$800K)", description: "ต่อสู้กับกฎระเบียบ" } },
+      { id: "early_comply", effect: { capital: -3_000_000, morale: 15 }, en: { label: "Comply Early (−$3M, +Morale)", description: "Show leadership in responsibility" }, th: { label: "ปฏิบัติตามเนิ่นๆ (−$3M, +ขวัญกำลังใจ)", description: "แสดงความเป็นผู้นำด้านความรับผิดชอบ" } },
+      { id: "wait_watch", effect: { morale: -5 }, en: { label: "Monitor & Wait", description: "Defer until law passes" }, th: { label: "ติดตามและรอ", description: "รอจนกฎหมายผ่าน" } },
+      { id: "lobby", effect: { capital: -1_500_000, morale: -10 }, en: { label: "Lobby Against It (−$1.5M)", description: "Fight the regulation, reputational risk" }, th: { label: "ล็อบบี้คัดค้าน (−$1.5M)", description: "ต่อสู้กับกฎระเบียบ เสี่ยงด้านชื่อเสียง" } },
     ],
   },
   {
-    id: "tech_breakthrough", type: "tech",
-    en: { title: "R&D Breakthrough", description: "Your engineers made an unexpected breakthrough in battery technology." },
-    th: { title: "การก้าวหน้าทางด้าน R&D", description: "วิศวกรของคุณค้นพบความก้าวหน้าที่ไม่คาดคิดเกี่ยวกับเทคโนโลยีแบตเตอรี่" },
+    id: "tech_breakthrough_event", type: "tech",
+    en: { title: "R&D Breakthrough Opportunity", description: "Your team discovered a new battery chemistry. Invest heavily to commercialize it and gain a competitive edge." },
+    th: { title: "โอกาสก้าวหน้าทาง R&D", description: "ทีมของคุณค้นพบเคมีแบตเตอรี่ใหม่ ลงทุนเพื่อนำมาใช้เชิงพาณิชย์และได้เปรียบการแข่งขัน" },
     choices: [
-      { id: "integrate", effect: { capital: -2000000, techLevel: 2, morale: 15 }, en: { label: "Fast-Track Integration (−$2M)", description: "Push it to market immediately" }, th: { label: "เร่งนำไปใช้ (−$2M)", description: "ผลักดันสู่ตลาดทันที" } },
-      { id: "patent", effect: { capital: 1000000, techLevel: 1, intelBonus: 2 }, en: { label: "Patent & License Out (+$1M)", description: "Monetize without full integration" }, th: { label: "จดสิทธิบัตรและอนุญาต (+$1M)", description: "สร้างรายได้โดยไม่ต้องรวมทั้งหมด" } },
-      { id: "shelve", effect: { morale: -5 }, en: { label: "Shelve for Later", description: "Wait for the right moment" }, th: { label: "เก็บไว้ก่อน", description: "รอเวลาที่เหมาะสม" } },
+      { id: "invest_heavy", effect: { capital: -10_000_000, ecotechBonus: 5, techLevel: 1 }, en: { label: "Full Investment (−$10M, +5 EcoTech, +1 Tech)", description: "Fast-track to market, high cost" }, th: { label: "ลงทุนเต็มที่ (−$10M, +5 EcoTech, +1 Tech)", description: "รีบนำสู่ตลาด ต้นทุนสูง" } },
+      { id: "invest_modest", effect: { capital: -4_000_000, ecotechBonus: 2 }, en: { label: "Modest Investment (−$4M, +2 EcoTech)", description: "Slower but sustainable" }, th: { label: "ลงทุนพอประมาณ (−$4M, +2 EcoTech)", description: "ช้ากว่าแต่ยั่งยืนกว่า" } },
+      { id: "license_out", effect: { capital: 3_000_000 }, en: { label: "License the Patent (+$3M)", description: "Sell the rights, don't build in-house" }, th: { label: "อนุญาตสิทธิบัตร (+$3M)", description: "ขายสิทธิ์ ไม่พัฒนาภายใน" } },
     ],
   },
   {
     id: "talent_war", type: "market",
-    en: { title: "Talent War Heats Up", description: "A competitor is poaching your key engineers with 50% salary bumps." },
-    th: { title: "การแย่งชิงความสามารถ", description: "คู่แข่งกำลังดึงวิศวกรหลักของคุณด้วยการขึ้นเงินเดือน 50%" },
+    en: { title: "Talent War", description: "A competitor is poaching your senior engineers with 60% salary bumps." },
+    th: { title: "สงครามแย่งชิงความสามารถ", description: "คู่แข่งดึงวิศวกรอาวุโสของคุณด้วยการขึ้นเงินเดือน 60%" },
     choices: [
-      { id: "counter_offer", effect: { capital: -1000000, morale: 20 }, en: { label: "Counter-Offer Team (−$1M)", description: "Match competitor packages" }, th: { label: "เสนอค่าตอบแทนสูงกว่า (−$1M)", description: "แข่งกับแพ็คเกจคู่แข่ง" } },
-      { id: "recruit", effect: { capital: -500000, techLevel: 1 }, en: { label: "Aggressive Recruiting (−$500K)", description: "Fill gaps with new talent" }, th: { label: "สรรหาแบบเชิงรุก (−$500K)", description: "เติมช่องว่างด้วยบุคลากรใหม่" } },
-      { id: "culture", effect: { morale: 15, capital: -300000 }, en: { label: "Invest in Culture & Equity", description: "Long-term retention strategy" }, th: { label: "ลงทุนในวัฒนธรรมองค์กร", description: "กลยุทธ์ retention ระยะยาว" } },
+      { id: "counter_offer", effect: { capital: -6_000_000, morale: 20 }, en: { label: "Counter-Offer Team (−$6M)", description: "Match competitor packages" }, th: { label: "เสนอค่าตอบแทนสูงกว่า (−$6M)", description: "แข่งกับแพ็คเกจคู่แข่ง" } },
+      { id: "let_go", effect: { morale: -20, ecotechBonus: -2 }, en: { label: "Let Some Engineers Go (−Morale, −EcoTech)", description: "Lose talent, lose research speed" }, th: { label: "ปล่อยวิศวกรบางส่วนไป (−ขวัญกำลังใจ, −EcoTech)", description: "สูญเสียความสามารถและความเร็ว R&D" } },
+      { id: "culture_fix", effect: { capital: -2_000_000, morale: 12 }, en: { label: "Invest in Culture (−$2M, +Morale)", description: "Long-term retention strategy" }, th: { label: "ลงทุนในวัฒนธรรมองค์กร (−$2M, +ขวัญกำลังใจ)", description: "กลยุทธ์ retention ระยะยาว" } },
     ],
   },
   {
-    id: "ai_revolution", 
-    type: "tech",
-    en: { 
-      title: "The AI Smartphone Revolution", 
-      description: "Generative AI is the new trend! Investors demand an AI-powered flagship phone immediately." 
-    },
-    th: { 
-      title: "การปฏิวัติสมาร์ทโฟน AI", 
-      description: "Generative AI กำลังเป็นกระแสหลัก! นักลงทุนเรียกร้องให้เปิดตัวมือถือเรือธงที่ขับเคลื่อนด้วย AI ทันที" 
-    },
+    id: "market_bubble", type: "market",
+    en: { title: "Speculative Market Bubble", description: "Analyst predictions show a 30% demand surge for premium devices. Do you ramp up or stay cautious?" },
+    th: { title: "ฟองสบู่ตลาดแบบ speculative", description: "นักวิเคราะห์คาดการณ์ความต้องการ premium device เพิ่ม 30% คุณจะเพิ่มหรือรอดู?" },
     choices: [
-      { 
-        id: "inhouse_ai", 
-        effect: { capital: -4000000, techLevel: 3, morale: 10 }, 
-        en: { label: "Develop In-House AI (−$4M)", description: "Massive cost, but secures long-term tech dominance." }, 
-        th: { label: "พัฒนา AI ของตัวเอง (−$4M)", description: "ต้นทุนมหาศาล แต่ครองความยิ่งใหญ่ทางเทคโนโลยีระยะยาว" } 
-      },
-      { 
-        id: "license_ai", 
-        effect: { capital: -1000000, techLevel: 1 }, 
-        en: { label: "License 3rd-Party AI (−$1M)", description: "Quick and cheap, but less innovative." }, 
-        th: { label: "ซื้อลิขสิทธิ์ AI สำเร็จรูป (−$1M)", description: "รวดเร็วและราคาถูก แต่ขาดนวัตกรรมที่โดดเด่น" } 
-      },
-      { 
-        id: "ignore_ai", 
-        effect: { techLevel: -1, morale: -15 }, 
-        en: { label: "Ignore the Trend", description: "Save money, but staff feel the company is falling behind." }, 
-        th: { label: "เพิกเฉยต่อกระแส", description: "ประหยัดเงิน แต่พนักงานรู้สึกว่าบริษัทกำลังล้าหลัง" } 
-      }
+      { id: "ramp_up", effect: { capital: -8_000_000, morale: 10, marketShare: 5 }, en: { label: "Aggressively Ramp Production (−$8M)", description: "High risk, high reward" }, th: { label: "เพิ่มการผลิตเชิงรุก (−$8M)", description: "ความเสี่ยงสูง ผลตอบแทนสูง" } },
+      { id: "stay_cautious", effect: { capital: 2_000_000 }, en: { label: "Stay Conservative (+$2M from efficiency)", description: "No risk, moderate reward" }, th: { label: "รอดูสถานการณ์ (+$2M จากประสิทธิภาพ)", description: "ไม่เสี่ยง ผลตอบแทนพอควร" } },
     ],
   },
   {
-    id: "spy_caught", 
-    type: "market",
-    en: { 
-      title: "Corporate Spy Compromised!", 
-      description: "One of your data analysts was caught trying to hack a competitor. The press is calling." 
-    },
-    th: { 
-      title: "สายลับองค์กรถูกจับได้!", 
-      description: "นักวิเคราะห์ข้อมูลของคุณคนหนึ่งถูกจับได้ว่าพยายามแฮกข้อมูลคู่แข่ง นักข่าวเตรียมแฉเรื่องนี้แล้ว" 
-    },
+    id: "patent_war", type: "regulation",
+    en: { title: "Patent Infringement Claim", description: "A tech giant is threatening a lawsuit over your display technology. Settle or fight." },
+    th: { title: "คดีละเมิดสิทธิบัตร", description: "บริษัทเทคยักษ์ใหญ่กำลังขู่ฟ้องเกี่ยวกับเทคโนโลยีหน้าจอของคุณ จะยอมความหรือสู้?" },
     choices: [
-      { 
-        id: "pay_hush", 
-        effect: { capital: -2500000, morale: 5 }, 
-        en: { label: "Pay Hush Money (−$2.5M)", description: "Bury the story using expensive lawyers." }, 
-        th: { label: "จ่ายค่าปิดปากสื่อ (−$2.5M)", description: "ฝังข่าวนี้ทิ้งด้วยทนายความราคาแพง" } 
-      },
-      { 
-        id: "scapegoat", 
-        effect: { capital: 0, morale: -25 }, 
-        en: { label: "Scapegoat the Analyst", description: "Save capital, but destroy company morale and trust." }, 
-        th: { label: "โยนความผิดให้พนักงาน", description: "รักษางบประมาณไว้ แต่ทำลายความเชื่อมั่นและกำลังใจขั้นสุด" } 
-      }
+      { id: "settle", effect: { capital: -12_000_000 }, en: { label: "Settle Out of Court (−$12M)", description: "Expensive but quick resolution" }, th: { label: "ยอมความนอกศาล (−$12M)", description: "แพงแต่จบเร็ว" } },
+      { id: "fight", effect: { capital: -5_000_000, morale: -15 }, en: { label: "Fight in Court (−$5M upfront, risky)", description: "Cheaper if you win, catastrophic if you lose" }, th: { label: "สู้ในศาล (−$5M ล่วงหน้า เสี่ยง)", description: "ถูกกว่าถ้าชนะ แต่หายนะถ้าแพ้" } },
+      { id: "pivot_tech", effect: { capital: -3_000_000, techLevel: -1 }, en: { label: "Redesign to Avoid Patent (−$3M, −1 Tech)", description: "Safe but sets you back technically" }, th: { label: "ออกแบบใหม่หลีกเลี่ยงสิทธิบัตร (−$3M, −1 Tech)", description: "ปลอดภัย แต่ถดถอยเชิงเทค" } },
     ],
   },
-  {
-    id: "grey_market", 
-    type: "supply",
-    en: { 
-      title: "The Grey Market Offer", 
-      description: "A shady supplier offers a massive batch of unverified components at a dirt-cheap price." 
-    },
-    th: { 
-      title: "ข้อเสนอจากตลาดมืด", 
-      description: "ซัพพลายเออร์ลึกลับเสนอขายชิ้นส่วนจำนวนมหาศาลที่ไม่ได้ตรวจสอบคุณภาพ ในราคาถูกแสนถูก" 
-    },
-    choices: [
-      { 
-        id: "accept_shady", 
-        effect: { capital: 1500000, techLevel: -1, morale: -10 }, 
-        en: { label: "Accept Offer (+$1.5M)", description: "Pocket the savings, but risk quality issues." }, 
-        th: { label: "รับข้อเสนอ (+$1.5M)", description: "เก็บเงินส่วนต่างเข้ากระเป๋า แต่ยอมลดคุณภาพสินค้า" } 
-      },
-      { 
-        id: "report_shady", 
-        effect: { capital: -200000, morale: 5, intelBonus: 2 }, 
-        en: { label: "Report to Authorities (−$200K)", description: "Small cost to assist police, rewards you with Intel Points." }, 
-        th: { label: "แจ้งเบาะแสให้ทางการ (−$200K)", description: "มีค่าดำเนินการเล็กน้อย แต่ได้แต้มข่าวกรองเป็นรางวัล" } 
-      }
-    ],
-  }
 ];
+
+// Bot events ที่สุ่มเกิดขึ้น — ทำให้บอทมีความไม่แน่นอนเหมือนกัน
+const BOT_POSITIVE_EVENTS = [
+  { label: "Bot received $20M investor injection", capitalDelta: 20_000_000 },
+  { label: "Bot supply deal locked in — costs −10%", capitalDelta: 8_000_000 },
+  { label: "Bot brand partnership — market share +2%", capitalDelta: 5_000_000 },
+  { label: "Bot government contract secured: +$15M", capitalDelta: 15_000_000 },
+];
+
+const BOT_NEGATIVE_EVENTS = [
+  { label: "Bot hit with $12M regulatory fine", capitalDelta: -12_000_000 },
+  { label: "Bot supply crisis — revenue impact −$8M", capitalDelta: -8_000_000 },
+  { label: "Bot executive scandal — capital penalty −$15M", capitalDelta: -15_000_000 },
+  { label: "Bot product recall — $10M liability", capitalDelta: -10_000_000 },
+];
+
+// ===== HELPER FUNCTIONS =====
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
 
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function clamp(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
+// สุ่ม 3 Directives จาก pool
+function pickDirectives(): BoardDirective[] {
+  return [...ALL_DIRECTIVES].sort(() => Math.random() - 0.5).slice(0, 3);
 }
 
-const HINT_KEYS = ["h1", "h2", "h3", "h4", "h5"] as const;
-const BOT_HINT_KEYS = ["b1", "b2", "b3", "b4"] as const;
-const MID_KEYS = ["m1", "m2", "m3", "m4", "m5", "m6", "m7"] as const;
-
-function generateMarketIntel(playerMetrics: PlayerMetrics): MarketIntel {
+// สร้าง Market Intel สำหรับ intel phase
+function generateMarketIntel(player: PlayerMetrics): MarketIntel {
   const trends = ["rising", "stable", "falling"] as const;
   const activities = ["aggressive", "passive", "unknown"] as const;
+  const hintKeys = ["hints.h1", "hints.h2", "hints.h3", "hints.h4", "hints.h5"];
+  const botHintKeys = ["hints.b1", "hints.b2", "hints.b3", "hints.b4"];
   return {
-    demandTrend: trends[Math.floor(Math.random() * 3)],
-    competitorActivity: activities[Math.floor(Math.random() * 3)],
-    hintKey: `hints.${pickRandom([...HINT_KEYS])}`,
-    botHintKey: playerMetrics.intelPoints > 0 ? `hints.${pickRandom([...BOT_HINT_KEYS])}` : null,
+    demandTrend: pickRandom([...trends]),
+    competitorActivity: pickRandom([...activities]),
+    hintKey: pickRandom(hintKeys),
+    botHintKey: player.intelPoints > 0 ? pickRandom(botHintKeys) : null,
   };
 }
 
-function generateBotSchedule(botState: BotState, quarter: number): BotScheduledAction[] {
+// สร้าง Bot schedule actions สำหรับ action phase
+function generateBotSchedule(bot: BotState, quarter: number): BotScheduledAction[] {
   const actions: BotScheduledAction[] = [];
-  const aggression = Math.min(0.3 + quarter * 0.05, 0.9);
+  const aggression = Math.min(0.3 + quarter * 0.04, 0.85);
 
   if (Math.random() < 0.8) {
-    const priceChange = (Math.random() < aggression ? -1 : 1) * (Math.floor(Math.random() * 5) + 2) * 10;
+    const priceChange = (Math.random() < aggression ? -1 : 1) * (Math.floor(Math.random() * 6) + 2) * 10;
     actions.push({
-      triggerAtSecond: Math.floor(Math.random() * 25) + 30,
+      triggerAtSecond: Math.floor(Math.random() * 25) + 20,
       executed: false,
-      label: priceChange < 0 ? `Bot slashed price by $${Math.abs(priceChange)}!` : `Bot raised price by $${Math.abs(priceChange)}`,
+      label: priceChange < 0 ? `Bot cut price by $${Math.abs(priceChange)}!` : `Bot raised price $${Math.abs(priceChange)}`,
       type: "price",
-      delta: { price: clamp(botState.price + priceChange, 299, 1499) },
+      delta: { price: clamp(bot.price + priceChange, 299, 3000) },
     });
   }
 
   if (Math.random() < 0.7) {
-    const shift = (Math.random() < 0.55 ? -1 : 1) * Math.floor(Math.random() * 20 + 5) * 1000;
+    const shift = (Math.random() < 0.55 ? -1 : 1) * Math.floor(Math.random() * 3 + 1) * 1_000_000;
     actions.push({
       triggerAtSecond: Math.floor(Math.random() * 20) + 5,
       executed: false,
-      label: shift > 0 ? "Bot ramped up production!" : "Bot cut production — going lean.",
+      label: shift > 0 ? "Bot ramped up production!" : "Bot trimmed production budget.",
       type: "production",
-      delta: { productionBudget: clamp(botState.productionBudget + shift, 30000, 200000) },
+      delta: { productionBudget: clamp(bot.productionBudget + shift, 1_000_000, 20_000_000) },
     });
   }
 
   return actions.sort((a, b) => a.triggerAtSecond - b.triggerAtSecond);
 }
 
-  function resolveQuarter(
-    player: PlayerMetrics,
-    draft: PlayerDraft,
-    bot: BotState,
-    executives: Executives,
-    upgrades: Upgrades,
-    loans: LoanState,
-    sabotage: SabotageState,
-  ): ResolutionResult {
-    const BASE_UNIT_COST = 200;
-    const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
-    const baseUnitCost = BASE_UNIT_COST * factoryDiscount;
+// ===== RESOLUTION ENGINE (หัวใจหลักของเกม) =====
+function resolveQuarter(
+  player: PlayerMetrics,
+  draft: PlayerDraft,
+  bot: BotState,
+  executives: Executives,
+  upgrades: Upgrades,
+  loans: LoanState,
+  sabotage: SabotageState,
+  components: ComponentsState,
+  boardDirective: BoardDirective | null,
+  quarter: number,
+): Omit<ResolutionResult, "botEventLabel"> {
 
-    let unitCostMultiplier = 1.0;
-    if (draft.productionBudget > 500_000) { 
-        const excessRatio = (draft.productionBudget - 500_000) / 500_000;
-        unitCostMultiplier = 1 + Math.pow(excessRatio, 1.2) * 0.3; 
-        if (executives.coo) unitCostMultiplier = Math.min(unitCostMultiplier, 1.20);
-    }
+  // === ต้นทุนต่อหน่วย (สูตร Exponential Bottleneck v3) ===
+  const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
+  // Memory L3+ ลดต้นทุนการผลิต
+  const memoryDiscount = [1.0, 1.0, 1.0, 0.97, 0.95, 0.93][clamp(components.memory, 0, 5)];
+  const baseCost = BASE_UNIT_COST * factoryDiscount * memoryDiscount;
 
-    const effectiveUnitCost = baseUnitCost * unitCostMultiplier;
+  // Bottleneck formula: ยิ่งผลิตมาก ยิ่งแพง (anti-exploit)
+  // $5M → 1.1×, $10M → 1.4×, $15M → 1.9×, $20M → 2.6×
+  const prodRatio = draft.productionBudget / 10_000_000;
+  let costMultiplier = 1 + Math.pow(prodRatio, 2) * 0.4;
+  if (executives.coo) costMultiplier = Math.min(costMultiplier, 1.5); // COO cap ที่ 1.5×
+  if (boardDirective === "aggressive_rd") costMultiplier *= 1.10;     // R&D เชิงรุก: +10% cost
+  if (boardDirective === "cost_cutting") costMultiplier *= 0.85;      // ปรับต้นทุน: −15% cost
 
-    const playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
+  const effectiveUnitCost = Math.round(baseCost * costMultiplier);
 
-    const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
-    const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
-    const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.7) : botCapacityRaw;
+  // === กำลังการผลิต ===
+  const playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
 
-    const baseMarket = 1_000_000; 
-    const maxViablePrice = 500 + (player.techLevel * 300); 
-    const techMultiplier = Math.pow(1.5, player.techLevel - 1); 
-    const TOTAL_MARKET = Math.floor(baseMarket * techMultiplier);
+  // Bot capacity
+  const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
+  const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
+  const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.70) : botCapacityRaw;
 
-    let demandFactor = 1.0;
-    if (draft.price > maxViablePrice) {
-      demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
-    }
+  // === 3-Segment Market (ตลาดแบ่งเป็น 3 กลุ่ม) ===
+  const BUDGET_SEG = TOTAL_MARKET * 0.40;   // Budget Buyers: เน้นราคา
+  const TECH_SEG   = TOTAL_MARKET * 0.30;   // Tech Enthusiasts: เน้น tech level
+  const BRAND_SEG  = TOTAL_MARKET * 0.30;   // Brand Loyalists: เน้น brand
 
-    const priceDiff = bot.price - draft.price;
-    const priceAdvantage = clamp(priceDiff / 200, -0.45, 0.45);
-    const techBonus = (player.techLevel - 3) * 0.05;
-    const moraleBonus = (player.morale - 50) * 0.002;
-    const playerShareFactor = clamp(0.5 + priceAdvantage + techBonus + moraleBonus, 0.05, 0.95);
+  // Budget Buyers: ราคาถูกกว่า = ได้ส่วนแบ่งมากกว่า
+  const budgetShare = clamp(0.5 + (bot.price - draft.price) / 300, 0.05, 0.95);
 
-    const playerRawDemand = Math.floor(TOTAL_MARKET * playerShareFactor * demandFactor);
-    const botShareFactor = sabotage.prPending ? (1 - playerShareFactor) * 0.93 : (1 - playerShareFactor);
-    const botRawDemand = Math.floor(TOTAL_MARKET * botShareFactor);
+  // Tech Enthusiasts: tech level + chip upgrade
+  const chipMultiplier = [1.0, 1.0, 1.12, 1.25, 1.40, 1.60][clamp(components.chip, 0, 5)];
+  const rawTechShare = 0.5 + (player.techLevel - (bot.techLevel + (bot.components?.chip ?? 1) * 0.2)) * 0.10;
+  const techShare = clamp(rawTechShare * chipMultiplier, 0.05, 0.97);
 
-    const playerSales = Math.min(playerCapacity, playerRawDemand);
-    const botSales = Math.min(botCapacity, botRawDemand);
+  // Brand Loyalists: brand perception + display
+  const displayBrandBonus = components.display >= 5 ? 1.20 : components.display >= 4 ? 1.10 : 1.0;
+  const brandShare = clamp((0.5 + (player.brandPerception - bot.brandPerception) * 0.008) * displayBrandBonus, 0.05, 0.95);
 
-    const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
-    const eWasteRate = executives.cfo ? 0.7 : 1.0;
-    const eWastePenalty = Math.floor(playerUnsold / 100_000) * 5_000_000 * eWasteRate;
+  // Price elasticity: ราคาเกิน tech ceiling → demand ลด
+  const displayCeilingMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][clamp(components.display, 0, 5)];
+  const maxViablePrice = player.techLevel * 200 * displayCeilingMult;
+  let demandFactor = 1.0;
+  if (draft.price > maxViablePrice) {
+    demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
+  }
 
-    // ---------------------------------------------------------
-    // ส่วนที่แก้ใหม่: คิดต้นทุนตามจำนวนที่ผลิตจริง (Capacity) ไม่ใช่ยอดขาย (Sales)
-    // ---------------------------------------------------------
-    const playerRevenue = playerSales * draft.price;
-    const playerVariableCost = playerCapacity * effectiveUnitCost; // <-- แก้ตรงนี้แล้ว
-    const playerFixedCost = draft.productionBudget * 0.2;
-    const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
-    const playerProfit = grossProfit - eWastePenalty;
+  // Battery milestone: Q3+ ต้องมี battery L2 มิฉะนั้น revenue -20%
+  const batteryPenaltyApplied = quarter >= 3 && components.battery < 2;
+  const revenueMultiplier = batteryPenaltyApplied ? 0.80 : 1.0;
 
-    const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
-    const capitalChange = playerProfit - debtRepayment;
+  // Memory bonus ใน budget segment
+  const memBudgetBonus = [1.0, 1.0, 1.06, 1.12, 1.18, 1.25][clamp(components.memory, 0, 5)];
+  // Battery L4+ ช่วย budget demand
+  const batteryBudgetBonus = components.battery >= 4 ? 1.08 : 1.0;
 
-    const botRevenue = botSales * bot.price;
-    const botCost = (botCapacity * botBaseCost) + (bot.productionBudget * 0.2); // <-- แก้ตรงนี้แล้ว
-    const botProfit = botRevenue - botCost;
-    // ---------------------------------------------------------
+  // Directive adjustments
+  const demandMult = boardDirective === "market_expansion" ? 1.12 : 1.0;
+  const budgetVolumeMult = boardDirective === "volume_play" ? 1.15 : 1.0;
+  const techVolumePenalty = boardDirective === "volume_play" ? 0.95 : 1.0;
 
-    const totalSales = playerSales + botSales;
-    const newPlayerShare = totalSales > 0 ? (playerSales / totalSales) * 100 : player.marketShare;
-    const newBotShare = 100 - newPlayerShare;
+  // Raw demand ต่อ segment
+  const playerBudgetDemand = BUDGET_SEG * budgetShare * memBudgetBonus * batteryBudgetBonus * budgetVolumeMult * demandMult;
+  const playerTechDemand   = TECH_SEG   * techShare   * demandFactor * techVolumePenalty * demandMult;
+  const playerBrandDemand  = BRAND_SEG  * brandShare  * demandMult;
+  const playerRawDemand = Math.floor(playerBudgetDemand + playerTechDemand + playerBrandDemand);
 
-    const moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
-    const techGrowth = upgrades.legendaryEngineer ? 2 : 0;
+  // Bot demand (inverse + sabotage)
+  const botBrandMod = sabotage.prPending ? 0.93 : 1.0;
+  const botRawDemand = Math.floor(
+    BUDGET_SEG * (1 - budgetShare) +
+    TECH_SEG   * (1 - techShare) +
+    BRAND_SEG  * (1 - brandShare) * botBrandMod
+  );
 
-    let summaryKey = "summaries.default";
-    if (demandFactor < 0.3) summaryKey = "summaries.elasticity";
-    else if (eWastePenalty > 2_000_000) summaryKey = "summaries.ewaste";
-    else if (playerSales > botSales * 1.3) summaryKey = "summaries.dominant";
-    else if (playerSales < botSales * 0.7) summaryKey = "summaries.rough";
-    else if (debtRepayment > 0) summaryKey = "summaries.debt";
-    else if (capitalChange < 0) summaryKey = "summaries.burning";
-    else if (playerSales > botSales && capitalChange > 500_000) summaryKey = "summaries.strong";
-    else summaryKey = "summaries.neckAndNeck";
+  // === ยอดขายจริง = min(กำลังผลิต, ความต้องการ) ===
+  const playerSales = Math.min(playerCapacity, playerRawDemand);
+  const botSales    = Math.min(botCapacity, botRawDemand);
+
+  // Segment breakdown (เพื่อแสดงใน UI)
+  const demandTotal = Math.max(playerRawDemand, 1);
+  const segBudget = Math.floor(playerSales * (playerBudgetDemand / demandTotal));
+  const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
+  const segBrand  = Math.max(0, playerSales - segBudget - segTech);
+
+  // === ค่าปรับ E-Waste: สูตร SEVERE v3 ===
+  // Capital Deduction = UnsoldInventory × UnitCost × 1.5
+  // (บน: ทำให้การผลิตสูงสุดโดยไม่ดูตลาดเป็นหายนะ)
+  const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
+  const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 1.5);
+
+  // === รายได้และกำไร ===
+  const playerRevenue = Math.floor(playerSales * draft.price * revenueMultiplier);
+  const playerVariableCost = playerSales * effectiveUnitCost;
+  let playerFixedCost = draft.productionBudget * 0.2;
+  if (boardDirective === "austerity") playerFixedCost *= 0.85;        // Austerity ลด fixed cost
+  const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
+  const playerProfit = grossProfit - eWastePenalty;
+
+  // Board directive direct capital costs (จ่ายใน lockAndResolve)
+  const directiveCost = boardDirective === "brand_campaign" ? 5_000_000
+    : boardDirective === "talent_retention" ? 3_000_000 : 0;
+
+  // หนี้สิน
+  const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
+  const capitalChange = playerProfit - debtRepayment - directiveCost;
+
+  // Bot financials
+  const botRevenue = botSales * bot.price;
+  const botCost = botSales * botBaseCost + bot.productionBudget * 0.2;
+  const botProfit = botRevenue - botCost;
+
+  // === Market share ===
+  const newPlayerShare = (playerSales + botSales) > 0
+    ? (playerSales / (playerSales + botSales)) * 100
+    : player.marketShare;
+
+  // === Metrics changes ===
+  const techGrowth = upgrades.legendaryEngineer ? 2
+    : boardDirective === "aggressive_rd" ? 1 : 0;
+
+  let brandChange = playerSales > botSales ? 4 : playerSales < botSales ? -3 : 0;
+  if (boardDirective === "brand_campaign") brandChange += 15;
+  if (boardDirective === "cost_cutting") brandChange -= 5;
+  if (components.battery >= 3) brandChange += 3; // Battery L3+ passive brand gain
+
+  let moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
+  if (boardDirective === "austerity") moraleChange -= 5;
+  if (boardDirective === "talent_retention") moraleChange += 10;
+
+  // EcoTech earned ไตรมาสนี้
+  let ecotechEarned = 2; // base
+  if (upgrades.legendaryEngineer) ecotechEarned += 2;
+  if (components.chip >= 4) ecotechEarned += 1;
+  if (boardDirective === "aggressive_rd") ecotechEarned += 3;
+
+  // Summary key
+  let summaryKey = "summaries.default";
+  if (batteryPenaltyApplied) summaryKey = "summaries.battery_penalty";
+  else if (demandFactor < 0.3) summaryKey = "summaries.elasticity";
+  else if (eWastePenalty > 0 && eWastePenalty > playerRevenue * 0.20) summaryKey = "summaries.ewaste";
+  else if (playerSales > botSales * 1.35) summaryKey = "summaries.dominant";
+  else if (playerSales < botSales * 0.65) summaryKey = "summaries.rough";
+  else if (capitalChange < 0) summaryKey = "summaries.burning";
+  else if (playerSales > botSales && capitalChange > 2_000_000) summaryKey = "summaries.strong";
+  else summaryKey = "summaries.neckAndNeck";
 
   return {
-    playerSalesUnits: playerSales,
-    botSalesUnits: botSales,
-    playerRevenue,
-    botRevenue,
-    grossProfit,
-    playerProfit,
-    botProfit,
+    playerSalesUnits: playerSales, botSalesUnits: botSales,
+    playerRevenue, botRevenue, grossProfit, playerProfit, botProfit,
     newPlayerMarketShare: clamp(newPlayerShare, 3, 97),
-    newBotMarketShare: clamp(newBotShare, 3, 97),
-    capitalChange,
-    moraleChange,
-    eWastePenalty,
-    eWasteUnits: playerUnsold,
-    debtRepayment,
-    techGrowth,
-    effectiveUnitCost,
-    playerCapacity,
-    playerRawDemand,
-    demandFactor,
-    summaryKey,
+    newBotMarketShare: clamp(100 - newPlayerShare, 3, 97),
+    capitalChange, moraleChange, brandChange, ecotechEarned,
+    eWastePenalty, eWasteUnits: playerUnsold, debtRepayment, techGrowth,
+    effectiveUnitCost, playerCapacity, playerRawDemand, demandFactor,
+    segmentBudget: segBudget, segmentTech: segTech, segmentBrand: segBrand,
+    batteryPenaltyApplied, summaryKey,
   };
 }
 
-const INITIAL_PLAYER: PlayerMetrics = { capital: 10_000_000, morale: 65, techLevel: 3, marketShare: 45, intelPoints: 3 };
-const INITIAL_DRAFT: PlayerDraft = { price: 699, productionBudget: 80_000, intelAllocation: 0 };
-const INITIAL_BOT: BotState = { price: 749, productionBudget: 75_000, capital: 10_000_000, marketShare: 55, lastMoveLabel: null, lastMoveTime: null, hasFactory: false };
-const INITIAL_EXECUTIVES: Executives = { cfo: false, coo: false };
-const INITIAL_UPGRADES: Upgrades = { componentFactory: false, legendaryEngineer: false };
-const INITIAL_LOANS: LoanState = { outstanding: 0, quartersRemaining: 0, repaymentPerQuarter: 0 };
-const INITIAL_SABOTAGE: SabotageState = { ddosPending: false, prPending: false, cooldown: false };
+// ===== INITIAL STATE =====
+const INIT_COMPONENTS: ComponentsState = { chip: 1, battery: 1, display: 1, memory: 1 };
+// เพิ่มทุนเริ่มต้นเป็น $50M (v3: economy rebalance)
+const INIT_PLAYER: PlayerMetrics = {
+  capital: 50_000_000, morale: 65, techLevel: 3,
+  marketShare: 45, intelPoints: 3, brandPerception: 50, ecotech: 5,
+};
+// งบการผลิตใหม่: $5M (v3: จาก $80K เดิม × 100 เพื่อให้รายได้สมเหตุสมผล)
+const INIT_DRAFT: PlayerDraft = { price: 699, productionBudget: 5_000_000, intelAllocation: 0 };
+const INIT_BOT: BotState = {
+  price: 749, productionBudget: 4_000_000, capital: 50_000_000,
+  marketShare: 55, techLevel: 3, brandPerception: 50, ecotech: 0,
+  components: { ...INIT_COMPONENTS },
+  lastMoveLabel: null, lastMoveTime: null, hasFactory: false,
+};
+const INIT_LOANS: LoanState = { outstanding: 0, quartersRemaining: 0, repaymentPerQuarter: 0, totalLoansEver: 0 };
+const INIT_ANTITRUST: AntitrustState = { playerHighShareStreak: 0, playerBlocked: false, playerBlockedQuartersLeft: 0 };
 
+// ===== GAME STATE INTERFACE =====
 interface GameState {
+  // Core state
   phase: GamePhase;
   quarter: number;
   gameResult: GameResult;
   language: "en" | "th";
 
+  // Player
   player: PlayerMetrics;
   draft: PlayerDraft;
+
+  // Bot
   bot: BotState;
 
+  // Timer (Action Phase)
   quarterTimer: number;
   timerRunning: boolean;
   playerReady: boolean;
   botLocked: boolean;
   botLockTime: number;
 
+  // Intel & Events
   currentEvent: QuarterEvent | null;
   marketIntel: MarketIntel | null;
   intelAlerts: IntelAlert[];
   midQuarterEventKey: string | null;
   botSchedule: BotScheduledAction[];
 
+  // Upgrades
   executives: Executives;
   upgrades: Upgrades;
   loans: LoanState;
   biddingWar: BiddingWar | null;
   sabotage: SabotageState;
 
+  // v3 systems
+  components: ComponentsState;           // Component tech tree
+  boardDirective: BoardDirective | null;  // Directive ที่เลือกไตรมาสนี้
+  pendingDirectives: BoardDirective[];    // 3 choices สำหรับ board meeting
+  antitrust: AntitrustState;             // Anti-trust watchdog
+  capitalHistory: CapitalHistoryEntry[]; // ประวัติทุนสำหรับกราฟ
+
+  // Resolution
   lastResolution: ResolutionResult | null;
 
+  // ===== ACTIONS =====
   startGame: () => void;
-  advanceToEvent: () => void;
+  advanceToBoardMeeting: () => void;   // intel → board meeting
+  chooseBoardDirective: (d: BoardDirective) => void; // board meeting → event
   resolveEvent: (choiceId: string) => void;
   startActionPhase: () => void;
   tickTimer: () => void;
@@ -374,28 +443,32 @@ interface GameState {
   nextQuarter: () => void;
   toggleLanguage: () => void;
 
+  // Corporate upgrades
   hireExecutive: (type: "cfo" | "coo") => void;
   purchaseUpgrade: (type: "componentFactory" | "legendaryEngineer") => void;
+  // แก้บัก loan: ใช้ได้เมื่อไม่มีหนี้ค้างอยู่ + สูงสุด 3 ครั้ง
   takeOutLoan: () => void;
   acceptBiddingWar: () => void;
   withdrawBiddingWar: () => void;
   launchSabotage: (type: "ddos" | "pr") => void;
-  resetGame: () => void;
 
-  playHoverSound: () => void;
-  playClickSound: () => void;
-  playTurnEndSound: () => void;
+  // v3 actions
+  upgradeComponent: (comp: keyof ComponentsState) => void;
+
+  resetGame: () => void;
 }
 
+// ===== STORE =====
 export const useGameStore = create<GameState>((set, get) => ({
+  // Initial state
   phase: "intel",
   quarter: 1,
   gameResult: "playing",
   language: "en",
 
-  player: { ...INITIAL_PLAYER },
-  draft: { ...INITIAL_DRAFT },
-  bot: { ...INITIAL_BOT },
+  player: { ...INIT_PLAYER },
+  draft: { ...INIT_DRAFT },
+  bot: { ...INIT_BOT },
 
   quarterTimer: QUARTER_DURATION,
   timerRunning: false,
@@ -409,23 +482,42 @@ export const useGameStore = create<GameState>((set, get) => ({
   midQuarterEventKey: null,
   botSchedule: [],
 
-  executives: { ...INITIAL_EXECUTIVES },
-  upgrades: { ...INITIAL_UPGRADES },
-  loans: { ...INITIAL_LOANS },
+  executives: { cfo: false, coo: false },
+  upgrades: { componentFactory: false, legendaryEngineer: false },
+  loans: { ...INIT_LOANS },
   biddingWar: null,
-  sabotage: { ...INITIAL_SABOTAGE },
+  sabotage: { ddosPending: false, prPending: false, cooldown: false },
+
+  components: { ...INIT_COMPONENTS },
+  boardDirective: null,
+  pendingDirectives: [],
+  antitrust: { ...INIT_ANTITRUST },
+  capitalHistory: [],
 
   lastResolution: null,
 
+  // ===== ACTIONS =====
+
   startGame: () => {
-    const state = get();
-    const intel = generateMarketIntel(state.player);
-    set({ phase: "intel", quarter: 1, marketIntel: intel, gameResult: "playing" });
+    const intel = generateMarketIntel(INIT_PLAYER);
+    set({
+      phase: "intel",
+      quarter: 1,
+      gameResult: "playing",
+      marketIntel: intel,
+      capitalHistory: [{ quarter: 0, playerCapital: INIT_PLAYER.capital, botCapital: INIT_BOT.capital }],
+    });
   },
 
-  advanceToEvent: () => {
+  // intel → board meeting (v3: เพิ่ม board meeting phase)
+  advanceToBoardMeeting: () => {
+    set({ phase: "boardmeeting", pendingDirectives: pickDirectives() });
+  },
+
+  // เลือก directive แล้วไปยัง event phase
+  chooseBoardDirective: (d) => {
     const event = pickRandom(EVENTS);
-    set({ phase: "event", currentEvent: event });
+    set({ boardDirective: d, phase: "event", currentEvent: event });
   },
 
   resolveEvent: (choiceId) => {
@@ -433,13 +525,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!currentEvent) return;
     const choice = currentEvent.choices.find((c) => c.id === choiceId);
     if (!choice) return;
+    const e = choice.effect;
     set({
       player: {
-        capital: clamp(player.capital + (choice.effect.capital || 0), 0, Infinity),
-        morale: clamp(player.morale + (choice.effect.morale || 0), 0, 100),
-        techLevel: clamp(player.techLevel + (choice.effect.techLevel || 0), 1, 10),
-        marketShare: clamp(player.marketShare + (choice.effect.marketShare || 0), 0, 100),
-        intelPoints: clamp(player.intelPoints + (choice.effect.intelBonus || 0), 0, 20),
+        ...player,
+        capital:          clamp(player.capital + (e.capital || 0), 0, Infinity),
+        morale:           clamp(player.morale + (e.morale || 0), 0, 100),
+        techLevel:        clamp(player.techLevel + (e.techLevel || 0), 1, 10),
+        marketShare:      clamp(player.marketShare + (e.marketShare || 0), 0, 100),
+        intelPoints:      clamp(player.intelPoints + (e.intelBonus || 0), 0, 20),
+        brandPerception:  clamp(player.brandPerception, 0, 100),
+        ecotech:          clamp(player.ecotech + (e.ecotechBonus || 0), 0, 99),
       },
       currentEvent: null,
     });
@@ -448,7 +544,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   startActionPhase: () => {
     const { bot, quarter } = get();
     const schedule = generateBotSchedule(bot, quarter);
-    const midKey = Math.random() < 0.6 ? `mid_events.${pickRandom([...MID_KEYS])}` : null;
+    const midKey = Math.random() < 0.55
+      ? `mid_events.m${Math.floor(Math.random() * 7) + 1}`
+      : null;
     const botLockTime = Math.floor(Math.random() * 16) + 15;
     set({
       phase: "action",
@@ -477,6 +575,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const elapsed = QUARTER_DURATION - newTimer;
 
+    // ตรวจสอบ bot lock
     let newBotLocked = state.botLocked;
     if (!state.botLocked && elapsed >= state.botLockTime) {
       newBotLocked = true;
@@ -487,6 +586,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
+    // Execute bot scheduled actions
     const pendingActions = state.botSchedule.filter((a) => !a.executed && a.triggerAtSecond <= elapsed);
     let newBot = { ...state.bot };
     let newSchedule = [...state.botSchedule];
@@ -497,13 +597,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       newSchedule = newSchedule.map((a) =>
         a.triggerAtSecond === action.triggerAtSecond ? { ...a, executed: true } : a
       );
+      // แสดง alert เฉพาะเมื่อผู้เล่นจัดสรร intel (v3: fog of war — แสดงช่วง ไม่ใช่ค่าตรง)
       if (state.draft.intelAllocation > 0) {
-        newAlerts.push({ id: `alert-${Date.now()}-${action.triggerAtSecond}`, message: `INTEL: ${action.label}`, timestamp: Date.now(), type: action.type });
+        const fuzzedPrice = action.type === "price"
+          ? `~$${Math.round((newBot.price + (Math.random() - 0.5) * 100) / 10) * 10}–$${Math.round((newBot.price + (Math.random() + 0.5) * 100) / 10) * 10}`
+          : "";
+        const msg = action.type === "price"
+          ? `INTEL: Bot adjusted pricing (est. ${fuzzedPrice})`
+          : `INTEL: ${action.label}`;
+        newAlerts.push({
+          id: `alert-${Date.now()}-${action.triggerAtSecond}`,
+          message: msg,
+          timestamp: Date.now(),
+          type: action.type,
+        });
       }
-    }
-
-    if (newTimer === 30 && state.midQuarterEventKey) {
-      newAlerts.push({ id: `mid-${Date.now()}`, message: `MARKET: [mid-quarter event]`, timestamp: Date.now(), type: "strategy" });
     }
 
     set({
@@ -518,7 +626,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateDraft: (partial) => set((s) => ({ draft: { ...s.draft, ...partial } })),
 
   addIntelAlert: (alert) => set((s) => ({
-    intelAlerts: [...s.intelAlerts, { ...alert, id: `alert-${Date.now()}`, timestamp: Date.now() }].slice(-6),
+    intelAlerts: [...s.intelAlerts, { ...alert, id: `a-${Date.now()}`, timestamp: Date.now() }].slice(-6),
   })),
 
   dismissIntelAlert: (id) => set((s) => ({ intelAlerts: s.intelAlerts.filter((a) => a.id !== id) })),
@@ -533,48 +641,128 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   lockAndResolve: () => {
-    const { player, draft, bot, executives, upgrades, loans, sabotage, quarter } = get();
-    get().playTurnEndSound();
-    const result = resolveQuarter(player, draft, bot, executives, upgrades, loans, sabotage);
+    const { player, draft, bot, executives, upgrades, loans, sabotage, components, boardDirective, quarter, antitrust, capitalHistory } = get();
 
-    const newCapital = clamp(player.capital + result.capitalChange, 0, Infinity);
-    const newTech = clamp(player.techLevel + result.techGrowth, 1, 10);
-    const newPlayer: PlayerMetrics = {
-      capital: newCapital,
-      morale: clamp(player.morale + result.moraleChange, 0, 100),
-      techLevel: newTech,
-      marketShare: result.newPlayerMarketShare,
-      intelPoints: clamp(player.intelPoints - draft.intelAllocation + 1, 0, 20),
-    };
+    // คำนวณผลลัพธ์ (pure function)
+    const rawResult = resolveQuarter(
+      player, draft, bot, executives, upgrades, loans, sabotage,
+      components, boardDirective, quarter
+    );
 
-    let newLoans = { ...loans };
-    if (loans.quartersRemaining > 0) {
-      newLoans = { ...loans, quartersRemaining: loans.quartersRemaining - 1, outstanding: Math.max(0, loans.outstanding - loans.repaymentPerQuarter) };
+    // === Bot Events (v3: บอทมีเหตุการณ์ด้วย) ===
+    let botEventLabel: string | null = null;
+    let botCapitalDelta = 0;
+    const botEventRoll = Math.random();
+    if (botEventRoll < 0.25) {
+      const ev = pickRandom(BOT_POSITIVE_EVENTS);
+      botEventLabel = ev.label;
+      botCapitalDelta = ev.capitalDelta;
+    } else if (botEventRoll < 0.42) {
+      const ev = pickRandom(BOT_NEGATIVE_EVENTS);
+      botEventLabel = ev.label;
+      botCapitalDelta = ev.capitalDelta;
     }
 
-    const botCapitalGain = result.botProfit;
-    const newBot: BotState = { ...bot, capital: clamp(bot.capital + botCapitalGain, 0, Infinity), marketShare: result.newBotMarketShare };
-
-    let newBotWithFactory = newBot;
-    if (!bot.hasFactory && newBot.capital > 150_000_000 && quarter > 4 && Math.random() < 0.3) {
-      newBotWithFactory = { ...newBot, hasFactory: true };
-      if (draft.intelAllocation > 0) {
-        get().addIntelAlert({ message: "ALERT: Competitor acquired a Component Factory!", type: "strategy" });
+    // === Bot Component Auto-Upgrade (v3: บอทพัฒนา components ด้วย) ===
+    const newBotEcotech = (bot.ecotech || 0) + 2 + Math.floor(bot.techLevel / 3);
+    const botComponents = { ...bot.components };
+    let spentEco = newBotEcotech;
+    // บอท priority: chip → display → memory → battery
+    for (const comp of ["chip", "display", "memory", "battery"] as (keyof ComponentsState)[]) {
+      const lvl = botComponents[comp];
+      if (lvl < 5) {
+        const cost = COMPONENT_UPGRADE_COSTS[comp][lvl + 1] ?? 99;
+        if (spentEco >= cost) {
+          (botComponents as Record<string, number>)[comp] = lvl + 1;
+          spentEco -= cost;
+          break; // อัพเกรดทีละ 1 ต่อไตรมาส
+        }
       }
     }
 
+    // === Bot State Update ===
+    const newBotCapital = clamp(bot.capital + rawResult.botProfit + botCapitalDelta, 0, Infinity);
+    const newBot: BotState = {
+      ...bot,
+      capital: newBotCapital,
+      marketShare: rawResult.newBotMarketShare,
+      components: botComponents,
+      ecotech: spentEco,
+      // Bot ปรับ tech level ช้าๆ
+      ...(quarter % 4 === 0 ? { techLevel: Math.min(bot.techLevel + 1, 10) } : {}),
+    } as BotState & { techLevel?: number };
+
+    // === Antitrust Check (v3) ===
+    let newAntitrust = { ...antitrust };
+    let antitrustFine = 0;
+    if (rawResult.newPlayerMarketShare > 60) {
+      newAntitrust.playerHighShareStreak++;
+      if (newAntitrust.playerHighShareStreak >= 2 && !newAntitrust.playerBlocked) {
+        antitrustFine = Math.floor(player.capital * 0.15);
+        newAntitrust.playerBlocked = true;
+        newAntitrust.playerBlockedQuartersLeft = 2;
+      }
+    } else {
+      newAntitrust.playerHighShareStreak = 0;
+    }
+    if (newAntitrust.playerBlocked && newAntitrust.playerBlockedQuartersLeft > 0) {
+      newAntitrust.playerBlockedQuartersLeft--;
+      if (newAntitrust.playerBlockedQuartersLeft <= 0) {
+        newAntitrust.playerBlocked = false;
+      }
+    }
+
+    // === Loan Update ===
+    let newLoans = { ...loans };
+    if (loans.quartersRemaining > 0) {
+      newLoans.quartersRemaining--;
+      newLoans.outstanding = Math.max(0, newLoans.outstanding - newLoans.repaymentPerQuarter);
+    }
+
+    // === Player State Update ===
+    const newCapital = clamp(
+      player.capital + rawResult.capitalChange - antitrustFine,
+      0, Infinity
+    );
+    const newPlayer: PlayerMetrics = {
+      capital: newCapital,
+      morale: clamp(player.morale + rawResult.moraleChange, 0, 100),
+      techLevel: clamp(player.techLevel + rawResult.techGrowth, 1, 10),
+      marketShare: rawResult.newPlayerMarketShare,
+      intelPoints: clamp(player.intelPoints - draft.intelAllocation + 1, 0, 20),
+      brandPerception: clamp(player.brandPerception + rawResult.brandChange, 0, 100),
+      ecotech: player.ecotech + rawResult.ecotechEarned,
+    };
+
+    // === Capital History ===
+    const newHistory: CapitalHistoryEntry[] = [
+      ...capitalHistory,
+      { quarter, playerCapital: newCapital, botCapital: newBotCapital },
+    ];
+
+    // === Summary override if antitrust ===
+    const finalResult: ResolutionResult = {
+      ...rawResult,
+      botEventLabel,
+      summaryKey: antitrustFine > 0 ? "summaries.antitrust" : rawResult.summaryKey,
+    };
+
+    // === Win Condition Check ===
     let gameResult: GameResult = "playing";
     if (newCapital <= 0) gameResult = "bankrupt";
     else if (newCapital >= INSTANT_WIN_CAPITAL) gameResult = "won_instant";
 
+    // === Sabotage Reset ===
     set({
       phase: "resolution",
       player: newPlayer,
-      bot: newBotWithFactory,
+      bot: newBot,
       loans: newLoans,
-      lastResolution: result,
+      antitrust: newAntitrust,
+      capitalHistory: newHistory,
+      lastResolution: finalResult,
       gameResult,
-      sabotage: { ...sabotage, ddosPending: false, prPending: false },
+      sabotage: { ...get().sabotage, ddosPending: false, prPending: false },
     });
   },
 
@@ -599,6 +787,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       quarter: nextQ,
       marketIntel: intel,
       lastResolution: null,
+      boardDirective: null,
       sabotage: { ddosPending: false, prPending: false, cooldown: false },
     });
   },
@@ -606,8 +795,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleLanguage: () => set((s) => ({ language: s.language === "en" ? "th" : "en" })),
 
   hireExecutive: (type) => {
-    const { player, executives, phase } = get();
+    const { player, executives, phase, antitrust } = get();
     if (phase === "action") return;
+    if (antitrust.playerBlocked) return; // Antitrust block
     if (executives[type]) return;
     const cost = 40_000_000;
     if (player.capital < cost) return;
@@ -615,9 +805,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   purchaseUpgrade: (type) => {
-    const { player, upgrades, executives, phase } = get();
+    const { player, upgrades, executives, phase, antitrust } = get();
     if (phase === "action") return;
     if (upgrades[type]) return;
+    // M&A blocked by antitrust
+    if (type === "componentFactory" && antitrust.playerBlocked) return;
     const costs: Record<string, number> = { componentFactory: 150_000_000, legendaryEngineer: 80_000_000 };
     const cost = costs[type];
     if (player.capital < cost) return;
@@ -629,35 +821,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ player: { ...player, capital: player.capital - cost }, upgrades: { ...upgrades, [type]: true } });
   },
 
+  // แก้บัก: ห้ามกู้ซ้ำถ้ายังมีหนี้ค้างอยู่ และสูงสุด 3 ครั้งตลอดเกม
   takeOutLoan: () => {
     const { player, loans, executives, phase } = get();
-    // ห้ามกู้เงินตอนที่เวลากำลังเดินอยู่ (ต้องกู้ตอนช่วงสรุปผลหรือเตรียมความพร้อม)
     if (phase === "action") return;
-
-    // ยอดผ่อนต่อไตรมาส: มี CFO จ่าย 2.5 ล้าน / ไม่มี CFO จ่าย 3 ล้าน
-    const repayment = executives.cfo ? 2_500_000 : 3_000_000;
-
+    // ตรวจสอบว่ามีหนี้อยู่แล้วหรือไม่
+    if (loans.quartersRemaining > 0) return; // มีหนี้อยู่ ห้ามกู้ใหม่
+    // ตรวจสอบ limit สูงสุด 3 ครั้ง
+    if (loans.totalLoansEver >= 3) return;
+    const repayment = executives.cfo ? 25_000_000 : 30_000_000;
     set({
-      player: { ...player, capital: player.capital + 10_000_000 },
+      player: { ...player, capital: player.capital + 100_000_000 },
       loans: {
-        outstanding: loans.outstanding + 10_000_000, // หนี้ตั้งต้นเพิ่ม 10 ล้าน
-        quartersRemaining: loans.quartersRemaining + 4,
-        // สำคัญ: บวกทบยอดผ่อนเดิมเข้าไปด้วย เผื่อผู้เล่นกดกู้ซ้อนกันหลายรอบ
-        repaymentPerQuarter: loans.repaymentPerQuarter + repayment, 
+        outstanding: 100_000_000,
+        quartersRemaining: 4,
+        repaymentPerQuarter: repayment,
+        totalLoansEver: loans.totalLoansEver + 1,
       },
     });
   },
 
-
   acceptBiddingWar: () => {
     const { player, upgrades } = get();
-    const extraCost = 20_000_000;
-    if (player.capital < extraCost) {
+    const extra = 20_000_000;
+    if (player.capital < extra) {
       set({ biddingWar: { active: false, engineerSigned: false } });
       return;
     }
     set({
-      player: { ...player, capital: player.capital - extraCost },
+      player: { ...player, capital: player.capital - extra },
       upgrades: { ...upgrades, legendaryEngineer: true },
       biddingWar: { active: false, engineerSigned: true },
     });
@@ -665,15 +857,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   withdrawBiddingWar: () => {
     const { player } = get();
-    set({
-      player: { ...player, capital: player.capital + 80_000_000 },
-      biddingWar: { active: false, engineerSigned: false },
-    });
+    set({ player: { ...player, capital: player.capital + 80_000_000 }, biddingWar: { active: false, engineerSigned: false } });
   },
 
   launchSabotage: (type) => {
-    const { player, sabotage, phase } = get();
+    const { player, sabotage, phase, antitrust } = get();
     if (phase === "action" || sabotage.cooldown) return;
+    if (antitrust.playerBlocked) return; // Antitrust block
     if (type === "ddos") {
       if (player.capital < 10_000_000 || player.intelPoints < 3) return;
       set({ player: { ...player, capital: player.capital - 10_000_000, intelPoints: player.intelPoints - 3 }, sabotage: { ...sabotage, ddosPending: true, cooldown: true } });
@@ -683,34 +873,52 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  // v3: อัพเกรด Component ด้วย EcoTech Points
+  upgradeComponent: (comp) => {
+    const { player, components, phase } = get();
+    if (phase === "action") return;
+    const currentLevel = components[comp];
+    if (currentLevel >= 5) return; // ถึงระดับสูงสุดแล้ว
+    const cost = COMPONENT_UPGRADE_COSTS[comp][currentLevel + 1];
+    if (!cost || player.ecotech < cost) return;
+    set({
+      components: { ...components, [comp]: currentLevel + 1 },
+      player: { ...player, ecotech: player.ecotech - cost },
+    });
+  },
+
   resetGame: () => {
     set({
       phase: "intel",
       quarter: 1,
       gameResult: "playing",
-      player: { ...INITIAL_PLAYER },
-      draft: { ...INITIAL_DRAFT },
-      bot: { ...INITIAL_BOT },
+      player: { ...INIT_PLAYER },
+      draft: { ...INIT_DRAFT },
+      bot: { ...INIT_BOT },
       quarterTimer: QUARTER_DURATION,
       timerRunning: false,
       playerReady: false,
       botLocked: false,
       botLockTime: 20,
       currentEvent: null,
-      marketIntel: generateMarketIntel(INITIAL_PLAYER),
+      marketIntel: generateMarketIntel(INIT_PLAYER),
       intelAlerts: [],
       midQuarterEventKey: null,
       botSchedule: [],
-      executives: { ...INITIAL_EXECUTIVES },
-      upgrades: { ...INITIAL_UPGRADES },
-      loans: { ...INITIAL_LOANS },
+      executives: { cfo: false, coo: false },
+      upgrades: { componentFactory: false, legendaryEngineer: false },
+      loans: { ...INIT_LOANS },
       biddingWar: null,
-      sabotage: { ...INITIAL_SABOTAGE },
+      sabotage: { ddosPending: false, prPending: false, cooldown: false },
+      components: { ...INIT_COMPONENTS },
+      boardDirective: null,
+      pendingDirectives: [],
+      antitrust: { ...INIT_ANTITRUST },
+      capitalHistory: [{ quarter: 0, playerCapital: INIT_PLAYER.capital, botCapital: INIT_BOT.capital }],
       lastResolution: null,
     });
   },
-
-  playHoverSound: () => {},
-  playClickSound: () => {},
-  playTurnEndSound: () => {},
 }));
+
+// Export upgrade costs for UI
+export { COMPONENT_UPGRADE_COSTS };

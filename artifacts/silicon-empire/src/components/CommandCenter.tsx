@@ -1,16 +1,22 @@
+// ===== COMMAND CENTER v3 =====
+// modal แผงควบคุม — เพิ่ม Tech Lab + Analytics tabs, แก้บัก loan
+
 import { useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { formatCapital, formatMoney } from "@/utils/format";
-import { Award, Wrench, Factory, Zap, Shield, Radio, CreditCard, TrendingUp, AlertTriangle, CheckCircle, X } from "lucide-react";
+import { Award, Wrench, Factory, Zap, Shield, Radio, CreditCard, TrendingUp, AlertTriangle, CheckCircle, X, FlaskConical, LineChart } from "lucide-react";
+import { ComponentLab } from "@/components/ComponentLab";
+import { FinancialGraph } from "@/components/FinancialGraph";
 
-type Tab = "executives" | "upgrades" | "sabotage" | "bank";
+type Tab = "executives" | "upgrades" | "sabotage" | "bank" | "lab" | "analytics";
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function TabBtn({ label, active, onClick, dot }: { label: string; active: boolean; onClick: () => void; dot?: boolean }) {
   return (
     <button onClick={onClick}
-      className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"}`}>
+      className={`relative flex-1 py-2 text-xs font-semibold uppercase tracking-wider rounded-lg transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"}`}>
       {label}
+      {dot && !active && <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-emerald-400" />}
     </button>
   );
 }
@@ -55,33 +61,57 @@ function UpgradeCard({ icon, title, description, cost, costLabel, onAction, acti
 
 export function CommandCenter({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("executives");
-  const { player, executives, upgrades, loans, sabotage, phase, hireExecutive, purchaseUpgrade, takeOutLoan, launchSabotage } = useGameStore();
+  const {
+    player, executives, upgrades, loans, sabotage, phase, antitrust,
+    hireExecutive, purchaseUpgrade, takeOutLoan, launchSabotage,
+  } = useGameStore();
   const { t } = useT();
 
   const isActionPhase = phase === "action";
   const notAvailableLabel = isActionPhase ? t("upgrades.notAvailable") : "";
 
+  // v3: loan button disabled if already active OR hit 3-loan limit
+  const loanBlocked = isActionPhase || loans.quartersRemaining > 0 || loans.totalLoansEver >= 3;
+  const loanBlockReason =
+    loans.quartersRemaining > 0 ? `Loan active (${loans.quartersRemaining}Q left)` :
+    loans.totalLoansEver >= 3 ? "Loan limit reached (3/3)" :
+    isActionPhase ? t("upgrades.notAvailable") : "";
+
+  // v3: antitrust blocks M&A + Sabotage
+  const antitrustBlocked = antitrust.playerBlocked;
+
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-lg bg-card border border-card-border rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
             <p className="text-sm font-bold text-foreground">{t("upgrades.title")}</p>
-            <p className="text-xs text-muted-foreground">{formatCapital(player.capital)} available</p>
+            <p className="text-xs text-muted-foreground">{formatCapital(player.capital)} available · ⚗ {player.ecotech} EcoTech</p>
           </div>
+          {antitrustBlocked && (
+            <span className="text-[10px] font-mono text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-1 rounded mr-2 animate-pulse">
+              ⚠ ANTITRUST BLOCK
+            </span>
+          )}
           <button onClick={onClose} className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex gap-1 p-3 border-b border-border">
+        {/* Tabs — v3: 6 tabs */}
+        <div className="flex gap-1 p-3 border-b border-border flex-wrap">
           <TabBtn label={t("upgrades.tabExecutives")} active={tab === "executives"} onClick={() => setTab("executives")} />
           <TabBtn label={t("upgrades.tabUpgrades")} active={tab === "upgrades"} onClick={() => setTab("upgrades")} />
           <TabBtn label={t("upgrades.tabSabotage")} active={tab === "sabotage"} onClick={() => setTab("sabotage")} />
           <TabBtn label={t("bank.title")} active={tab === "bank"} onClick={() => setTab("bank")} />
+          <TabBtn label="Tech Lab" active={tab === "lab"} onClick={() => setTab("lab")} dot={player.ecotech >= 2} />
+          <TabBtn label="Analytics" active={tab === "analytics"} onClick={() => setTab("analytics")} />
         </div>
 
+        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
           {tab === "executives" && (
@@ -111,13 +141,18 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
           {tab === "upgrades" && (
             <>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("upgrades.permanentUpgrades")}</p>
+              {antitrustBlocked && (
+                <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+                  ⚠ M&A blocked by antitrust regulators for {antitrust.playerBlockedQuartersLeft} more quarter(s).
+                </div>
+              )}
               <UpgradeCard
                 icon={<Factory className="w-4 h-4 text-violet-400" />}
                 title={t("upgrades.maTitle")} description={t("upgrades.maDesc")}
                 cost={150_000_000} costLabel={t("upgrades.maCost")}
                 done={upgrades.componentFactory}
-                disabled={isActionPhase || player.capital < 150_000_000 || upgrades.componentFactory}
-                disabledReason={player.capital < 150_000_000 && !upgrades.componentFactory ? t("upgrades.insufficientCapital") : notAvailableLabel}
+                disabled={isActionPhase || antitrustBlocked || player.capital < 150_000_000 || upgrades.componentFactory}
+                disabledReason={antitrustBlocked ? "Blocked by antitrust" : player.capital < 150_000_000 && !upgrades.componentFactory ? t("upgrades.insufficientCapital") : notAvailableLabel}
                 onAction={() => purchaseUpgrade("componentFactory")} actionLabel={t("upgrades.acquire")}
               />
               <UpgradeCard
@@ -138,25 +173,28 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("upgrades.sabotageHint")}</p>
                 {sabotage.cooldown && <span className="text-[10px] text-orange-400 font-bold uppercase">{t("upgrades.onCooldown")}</span>}
               </div>
+              {antitrustBlocked && (
+                <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+                  ⚠ Sabotage blocked by antitrust regulators.
+                </div>
+              )}
               <UpgradeCard
                 icon={<Shield className="w-4 h-4 text-red-400" />}
                 title={t("upgrades.ddosTitle")} description={t("upgrades.ddosDesc")}
                 cost={10_000_000} costLabel={t("upgrades.ddosCost")}
                 done={sabotage.ddosPending}
-                disabled={isActionPhase || sabotage.cooldown || player.capital < 10_000_000 || player.intelPoints < 3}
-                disabledReason={player.intelPoints < 3 ? t("upgrades.insufficientIntel") : player.capital < 10_000_000 ? t("upgrades.insufficientCapital") : notAvailableLabel}
-                onAction={() => { launchSabotage("ddos"); }}
-                actionLabel={t("upgrades.launch")}
+                disabled={isActionPhase || sabotage.cooldown || antitrustBlocked || player.capital < 10_000_000 || player.intelPoints < 3}
+                disabledReason={antitrustBlocked ? "Blocked by antitrust" : player.intelPoints < 3 ? t("upgrades.insufficientIntel") : player.capital < 10_000_000 ? t("upgrades.insufficientCapital") : notAvailableLabel}
+                onAction={() => launchSabotage("ddos")} actionLabel={t("upgrades.launch")}
               />
               <UpgradeCard
                 icon={<Radio className="w-4 h-4 text-pink-400" />}
                 title={t("upgrades.prTitle")} description={t("upgrades.prDesc")}
                 cost={5_000_000} costLabel={t("upgrades.prCost")}
                 done={sabotage.prPending}
-                disabled={isActionPhase || sabotage.cooldown || player.capital < 5_000_000 || player.intelPoints < 2}
-                disabledReason={player.intelPoints < 2 ? t("upgrades.insufficientIntel") : player.capital < 5_000_000 ? t("upgrades.insufficientCapital") : notAvailableLabel}
-                onAction={() => { launchSabotage("pr"); }}
-                actionLabel={t("upgrades.launch")}
+                disabled={isActionPhase || sabotage.cooldown || antitrustBlocked || player.capital < 5_000_000 || player.intelPoints < 2}
+                disabledReason={antitrustBlocked ? "Blocked by antitrust" : player.intelPoints < 2 ? t("upgrades.insufficientIntel") : player.capital < 5_000_000 ? t("upgrades.insufficientCapital") : notAvailableLabel}
+                onAction={() => launchSabotage("pr")} actionLabel={t("upgrades.launch")}
               />
               {(sabotage.ddosPending || sabotage.prPending) && (
                 <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 text-xs text-orange-400">
@@ -168,6 +206,14 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
 
           {tab === "bank" && (
             <>
+              {/* v3: Show loan limit counter */}
+              <div className="flex items-center justify-between px-3 py-2 bg-secondary/40 border border-border rounded-lg text-xs">
+                <span className="text-muted-foreground">Loan history</span>
+                <span className={`font-mono font-bold ${loans.totalLoansEver >= 3 ? "text-red-400" : "text-foreground"}`}>
+                  {loans.totalLoansEver}/3 used
+                </span>
+              </div>
+
               <div className="bg-secondary/40 border border-card-border rounded-xl p-4">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -180,11 +226,18 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1 mb-3 pl-12">
                   <p>{executives.cfo ? t("bank.repayWithCFO") : t("bank.repayStandard")}</p>
+                  {loanBlockReason && <p className="text-yellow-500">{loanBlockReason}</p>}
                 </div>
-                <button onClick={() => { takeOutLoan(); }}
-                  disabled={isActionPhase}
-                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${isActionPhase ? "bg-secondary text-muted-foreground cursor-not-allowed" : "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30"}`}>
-                  {isActionPhase ? t("upgrades.notAvailable") : t("bank.takeLoan")} (+$100M)
+                {/* v3: disable button when loan active OR limit reached */}
+                <button
+                  onClick={() => takeOutLoan()}
+                  disabled={loanBlocked}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                    loanBlocked
+                      ? "bg-secondary text-muted-foreground cursor-not-allowed"
+                      : "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30"
+                  }`}>
+                  {loanBlocked ? loanBlockReason || "Unavailable" : `${t("bank.takeLoan")} (+$100M)`}
                 </button>
               </div>
 
@@ -227,6 +280,49 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
                 <p className="text-[10px] text-muted-foreground mt-1">{formatCapital(player.capital)} / $1B</p>
               </div>
             </>
+          )}
+
+          {/* v3: Tech Lab tab */}
+          {tab === "lab" && <ComponentLab />}
+
+          {/* v3: Analytics tab */}
+          {tab === "analytics" && (
+            <div className="space-y-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Capital vs Competitor</p>
+              <FinancialGraph />
+
+              {/* Quick stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-secondary/40 rounded-xl p-3 border border-border">
+                  <p className="text-[10px] text-muted-foreground">Brand Perception</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-sm font-mono font-bold text-purple-400">{useGameStore.getState().player.brandPerception}</span>
+                    <span className="text-sm font-mono text-red-400">{useGameStore.getState().bot.brandPerception}</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/50 mt-0.5">You / Bot</div>
+                </div>
+                <div className="bg-secondary/40 rounded-xl p-3 border border-border">
+                  <p className="text-[10px] text-muted-foreground">Tech Level</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-sm font-mono font-bold text-blue-400">T{useGameStore.getState().player.techLevel}</span>
+                    <span className="text-sm font-mono text-red-400">T{useGameStore.getState().bot.techLevel}</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/50 mt-0.5">You / Bot</div>
+                </div>
+                <div className="bg-secondary/40 rounded-xl p-3 border border-border">
+                  <p className="text-[10px] text-muted-foreground">Market Share</p>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-sm font-mono font-bold ${useGameStore.getState().player.marketShare > 50 ? "text-emerald-400" : "text-orange-400"}`}>{useGameStore.getState().player.marketShare.toFixed(1)}%</span>
+                    <span className="text-sm font-mono text-red-400">{useGameStore.getState().bot.marketShare.toFixed(1)}%</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/50 mt-0.5">You / Bot</div>
+                </div>
+                <div className="bg-secondary/40 rounded-xl p-3 border border-border">
+                  <p className="text-[10px] text-muted-foreground">Bot Capital</p>
+                  <span className="text-sm font-mono font-bold text-red-400">{formatCapital(useGameStore.getState().bot.capital)}</span>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>

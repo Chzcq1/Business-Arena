@@ -1,8 +1,11 @@
+// ===== ACTION PHASE v3 =====
+// เฟสดำเนินการ — อัพเดต: สเกลงบ $1M-$20M, fog of war intel, dynamic price ceiling
+
 import { useEffect, useRef } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { formatMoney } from "@/utils/format";
-import { DollarSign, Factory, Eye, Clock, Lock, Wifi, WifiOff, CheckCircle, Circle, AlertTriangle, Swords } from "lucide-react";
+import { DollarSign, Factory, Eye, Clock, Lock, Wifi, WifiOff, CheckCircle, Circle, AlertTriangle, Swords, Zap } from "lucide-react";
 
 function TimerRing({ value, max }: { value: number; max: number }) {
   const pct = value / max;
@@ -65,7 +68,11 @@ function BiddingWarModal() {
 }
 
 export function ActionPhase() {
-  const { quarterTimer, timerRunning, draft, updateDraft, bot, intelAlerts, dismissIntelAlert, quarter, player, playerReady, botLocked, upgrades, submitReady, biddingWar } = useGameStore();
+  const {
+    quarterTimer, timerRunning, draft, updateDraft, bot, intelAlerts,
+    dismissIntelAlert, quarter, player, playerReady, botLocked, upgrades,
+    submitReady, biddingWar, components, executives,
+  } = useGameStore();
   const tickTimer = useGameStore((s) => s.tickTimer);
   const { t } = useT();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,12 +86,43 @@ export function ActionPhase() {
 
   const isLocked = !timerRunning && quarterTimer === 0;
   const isCritical = quarterTimer <= 10 && quarterTimer > 0;
-  const maxViablePrice = player.techLevel * 200;
+
+  // v3: สูตรใหม่ที่ตรงกับ gameStore (exponential bottleneck)
+  const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
+  const memoryDiscount = [1.0, 1.0, 1.0, 0.97, 0.95, 0.93][Math.min(components.memory, 5)];
+  const baseCost = Math.round(200 * factoryDiscount * memoryDiscount);
+  const prodRatio = draft.productionBudget / 10_000_000;
+  let costMult = 1 + Math.pow(prodRatio, 2) * 0.4;
+  if (executives.coo) costMult = Math.min(costMult, 1.5);
+  const effectiveUnitCost = Math.round(baseCost * costMult);
+
+  // v3: max price slider ขยายตาม Display level
+  const displayMaxMults = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00];
+  const maxPriceSlider = Math.round(1499 * displayMaxMults[Math.min(components.display, 5)]);
+
+  // Price elasticity warning
+  const displayCeilMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][Math.min(components.display, 5)];
+  const maxViablePrice = player.techLevel * 200 * displayCeilMult;
   const priceOverCeiling = draft.price > maxViablePrice;
-  const dimReturnsActive = draft.productionBudget > 100_000;
-  const effectiveUnitCost = dimReturnsActive
-    ? Math.round(200 * (upgrades.componentFactory ? 0.75 : 1.0) * Math.min(1 + Math.pow((draft.productionBudget - 100_000) / 100_000, 1.5) * 0.6, 3))
-    : Math.round(200 * (upgrades.componentFactory ? 0.75 : 1.0));
+
+  // v3: fog of war — intel แสดงแค่ช่วงประมาณ (±10-15%)
+  const showIntel = draft.intelAllocation > 0;
+  const fuzzPrice = (v: number) => {
+    if (!showIntel) return "???";
+    const fuzz = Math.round((Math.random() * 0.12 - 0.06) * v / 10) * 10;
+    return `~$${v + fuzz}`;
+  };
+  const fuzzProd = (v: number) => {
+    if (!showIntel) return "???";
+    const fuzz = Math.round((Math.random() * 0.15 - 0.07) * v / 500_000) * 500_000;
+    return `~${formatMoney(v + fuzz)}`;
+  };
+
+  // Estimated capacity
+  const estCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
+
+  // Bottleneck warning (>$8M budget)
+  const highBudgetWarning = draft.productionBudget > 8_000_000;
 
   return (
     <>
@@ -131,14 +169,15 @@ export function ActionPhase() {
           </div>
         </div>
 
-        {(priceOverCeiling || dimReturnsActive) && (
+        {/* Warnings */}
+        {(priceOverCeiling || highBudgetWarning) && (
           <div className="flex flex-col gap-1.5">
             {priceOverCeiling && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
-                <AlertTriangle className="w-3 h-3 shrink-0" />{t("action_phase.elasticityWarning")}
+                <AlertTriangle className="w-3 h-3 shrink-0" />{t("action_phase.elasticityWarning")} (ceiling: ~${Math.round(maxViablePrice)})
               </div>
             )}
-            {dimReturnsActive && (
+            {highBudgetWarning && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-400">
                 <AlertTriangle className="w-3 h-3 shrink-0" />{t("action_phase.diminishingWarning")} (${effectiveUnitCost}/unit)
               </div>
@@ -148,64 +187,81 @@ export function ActionPhase() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="flex flex-col gap-4">
-            {[
-              {
-                icon: <DollarSign className="w-4 h-4 text-emerald-400" />, bg: "bg-emerald-500/10 border-emerald-500/20",
-                label: t("action_phase.price"), hint: t("action_phase.priceHint"),
-                value: `$${draft.price}`, sub: t("action_phase.minPrice"),
-                color: priceOverCeiling ? "text-red-400" : "text-emerald-400",
-                min: 299, max: 1499, step: 10, current: draft.price,
-                onChange: (v: number) => updateDraft({ price: v }),
-                trackColor: priceOverCeiling ? "hsl(0 84% 60%)" : "hsl(142 76% 46%)",
-                pct: ((draft.price - 299) / (1499 - 299)) * 100,
-                minLabel: t("action_phase.priceMin"), maxLabel: t("action_phase.priceMax"),
-              },
-              {
-                icon: <Factory className="w-4 h-4 text-blue-400" />, bg: "bg-blue-500/10 border-blue-500/20",
-                label: t("action_phase.production"), hint: t("action_phase.productionHint"),
-                value: formatMoney(draft.productionBudget),
-                sub: `≈ ${Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost).toLocaleString()} ${t("action_phase.units")}`,
-                color: dimReturnsActive ? "text-yellow-400" : "text-blue-400",
-                min: 20000, max: 200000, step: 5000, current: draft.productionBudget,
-                onChange: (v: number) => updateDraft({ productionBudget: v }),
-                trackColor: dimReturnsActive ? "hsl(39 100% 57%)" : "hsl(217 91% 60%)",
-                pct: ((draft.productionBudget - 20000) / (200000 - 20000)) * 100,
-                minLabel: t("action_phase.prodMin"), maxLabel: t("action_phase.prodMax"),
-              },
-              {
-                icon: <Eye className="w-4 h-4 text-amber-400" />, bg: "bg-amber-500/10 border-amber-500/20",
-                label: t("action_phase.intel"), hint: `${player.intelPoints} ${t("action_phase.intelHintAvail")}`,
-                value: `${draft.intelAllocation} pts`,
-                sub: draft.intelAllocation > 0 ? t("action_phase.intelActive") : t("action_phase.intelOff"),
-                color: "text-amber-400",
-                min: 0, max: Math.min(player.intelPoints, 5), step: 1, current: draft.intelAllocation,
-                onChange: (v: number) => updateDraft({ intelAllocation: v }),
-                trackColor: "hsl(39 100% 57%)",
-                pct: (draft.intelAllocation / Math.max(Math.min(player.intelPoints, 5), 1)) * 100,
-                minLabel: t("action_phase.intelInfo"), maxLabel: "",
-              },
-            ].map((s) => (
-              <div key={s.label} className={`bg-card border rounded-xl p-4 transition-all ${isLocked ? "opacity-60 pointer-events-none border-border" : "border-card-border"}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center ${s.bg}`}>{s.icon}</div>
-                    <div>
-                      <p className="text-xs font-semibold text-foreground">{s.label}</p>
-                      <p className="text-[10px] text-muted-foreground">{s.hint}</p>
-                    </div>
+            {/* Price Slider */}
+            <div className={`bg-card border rounded-xl p-4 transition-all ${isLocked ? "opacity-60 pointer-events-none border-border" : priceOverCeiling ? "border-red-500/30" : "border-card-border"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg border bg-emerald-500/10 border-emerald-500/20 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <p className={`text-lg font-mono font-bold ${s.color}`}>{s.value}</p>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">{t("action_phase.price")}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {t("action_phase.priceHint")} · max ${ maxPriceSlider} {components.display >= 2 ? `(Display L${components.display})` : ""}
+                    </p>
+                  </div>
                 </div>
-                <input type="range" min={s.min} max={s.max} step={s.step} value={s.current} disabled={isLocked}
-                  onChange={(e) => s.onChange(Number(e.target.value))}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                  style={{ background: `linear-gradient(to right, ${s.trackColor} ${s.pct}%, hsl(var(--secondary)) ${s.pct}%)` }}
-                />
-                <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                  <span>{s.minLabel}</span><span>{s.maxLabel}</span>
-                </div>
+                <p className={`text-lg font-mono font-bold ${priceOverCeiling ? "text-red-400" : "text-emerald-400"}`}>${draft.price}</p>
               </div>
-            ))}
+              <input type="range" min={299} max={maxPriceSlider} step={10} value={draft.price} disabled={isLocked}
+                onChange={(e) => updateDraft({ price: Number(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{ background: `linear-gradient(to right, ${priceOverCeiling ? "hsl(0 84% 60%)" : "hsl(142 76% 46%)"} ${((draft.price - 299) / (maxPriceSlider - 299)) * 100}%, hsl(var(--secondary)) ${((draft.price - 299) / (maxPriceSlider - 299)) * 100}%)` }}
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>{t("action_phase.priceMin")}</span><span>{t("action_phase.priceMax")}</span>
+              </div>
+            </div>
+
+            {/* Production Budget Slider — v3: $1M-$20M */}
+            <div className={`bg-card border rounded-xl p-4 transition-all ${isLocked ? "opacity-60 pointer-events-none border-border" : highBudgetWarning ? "border-yellow-500/30" : "border-card-border"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg border bg-blue-500/10 border-blue-500/20 flex items-center justify-center">
+                    <Factory className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">{t("action_phase.production")}</p>
+                    <p className="text-[10px] text-muted-foreground">{t("action_phase.productionHint")}</p>
+                  </div>
+                </div>
+                <p className={`text-lg font-mono font-bold ${highBudgetWarning ? "text-yellow-400" : "text-blue-400"}`}>{formatMoney(draft.productionBudget)}</p>
+              </div>
+              <input type="range" min={1_000_000} max={20_000_000} step={500_000} value={draft.productionBudget} disabled={isLocked}
+                onChange={(e) => updateDraft({ productionBudget: Number(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{ background: `linear-gradient(to right, ${highBudgetWarning ? "hsl(39 100% 57%)" : "hsl(217 91% 60%)"} ${((draft.productionBudget - 1_000_000) / (20_000_000 - 1_000_000)) * 100}%, hsl(var(--secondary)) ${((draft.productionBudget - 1_000_000) / (20_000_000 - 1_000_000)) * 100}%)` }}
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>{t("action_phase.prodMin")}</span>
+                <span className="text-yellow-400/70 font-mono">≈ {estCapacity.toLocaleString()} {t("action_phase.units")} @ ${effectiveUnitCost}/u</span>
+                <span>{t("action_phase.prodMax")}</span>
+              </div>
+            </div>
+
+            {/* Intel Allocation */}
+            <div className={`bg-card border rounded-xl p-4 transition-all ${isLocked ? "opacity-60 pointer-events-none border-border" : "border-card-border"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg border bg-amber-500/10 border-amber-500/20 flex items-center justify-center">
+                    <Eye className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">{t("action_phase.intel")}</p>
+                    <p className="text-[10px] text-muted-foreground">{player.intelPoints} {t("action_phase.intelHintAvail")} — {t("action_phase.intelInfo")}</p>
+                  </div>
+                </div>
+                <p className="text-lg font-mono font-bold text-amber-400">{draft.intelAllocation} pts</p>
+              </div>
+              <input type="range" min={0} max={Math.min(player.intelPoints, 5)} step={1} value={draft.intelAllocation} disabled={isLocked}
+                onChange={(e) => updateDraft({ intelAllocation: Number(e.target.value) })}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{ background: `linear-gradient(to right, hsl(39 100% 57%) ${(draft.intelAllocation / Math.max(Math.min(player.intelPoints, 5), 1)) * 100}%, hsl(var(--secondary)) ${(draft.intelAllocation / Math.max(Math.min(player.intelPoints, 5), 1)) * 100}%)` }}
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>{draft.intelAllocation > 0 ? t("action_phase.intelActive") : t("action_phase.intelOff")}</span>
+              </div>
+            </div>
 
             {!isLocked && (
               <button
@@ -223,45 +279,58 @@ export function ActionPhase() {
           </div>
 
           <div className="flex flex-col gap-4">
+            {/* Competitor status — v3: fog of war */}
             <div className="bg-card border border-card-border rounded-xl p-5">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-4">{t("action_phase.competitorStatus")}</p>
               <div className="space-y-4">
-                {[
-                  { label: t("action_phase.botPrice"), value: draft.intelAllocation > 0 ? `$${bot.price}` : "???", pct: ((bot.price - 299) / (1499 - 299)) * 100 },
-                  { label: t("action_phase.botProd"), value: draft.intelAllocation > 0 ? formatMoney(bot.productionBudget) : "???", pct: ((bot.productionBudget - 20000) / (200000 - 20000)) * 100 },
-                ].map((row) => (
-                  <div key={row.label}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-muted-foreground">{row.label}</span>
-                      <span className={`text-sm font-mono font-bold ${draft.intelAllocation > 0 ? "text-foreground" : "text-muted-foreground"}`}>{row.value}</span>
-                    </div>
-                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                      {draft.intelAllocation > 0 && <div className="h-full bg-red-400 rounded-full transition-all duration-500" style={{ width: `${row.pct}%` }} />}
-                    </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">{t("action_phase.botPrice")}</span>
+                    <span className={`text-sm font-mono font-bold ${showIntel ? "text-foreground" : "text-muted-foreground"}`}>
+                      {showIntel ? fuzzPrice(bot.price) : "???"}
+                    </span>
                   </div>
-                ))}
-                {bot.lastMoveLabel && draft.intelAllocation > 0 && (
+                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                    {showIntel && <div className="h-full bg-red-400 rounded-full transition-all duration-500" style={{ width: `${((bot.price - 299) / (maxPriceSlider - 299)) * 100}%` }} />}
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">{t("action_phase.botProd")}</span>
+                    <span className={`text-sm font-mono font-bold ${showIntel ? "text-foreground" : "text-muted-foreground"}`}>
+                      {showIntel ? fuzzProd(bot.productionBudget) : "???"}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                    {showIntel && <div className="h-full bg-red-400 rounded-full transition-all duration-500" style={{ width: `${((bot.productionBudget - 1_000_000) / (20_000_000 - 1_000_000)) * 100}%` }} />}
+                  </div>
+                </div>
+                {bot.lastMoveLabel && showIntel && (
                   <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 flash-alert">
                     <p className="text-[10px] text-red-400 uppercase tracking-wider mb-1">{t("action_phase.lastMove")}</p>
                     <p className="text-xs text-red-300 font-mono">{bot.lastMoveLabel}</p>
                   </div>
                 )}
+                {!showIntel && (
+                  <p className="text-xs text-muted-foreground italic">{t("action_phase.enableIntel")}</p>
+                )}
               </div>
             </div>
 
+            {/* Intel feed */}
             <div className="bg-card border border-card-border rounded-xl p-5 flex-1">
               <div className="flex items-center gap-2 mb-3">
-                {draft.intelAllocation > 0 ? <Wifi className="w-3 h-3 text-amber-400" /> : <WifiOff className="w-3 h-3 text-muted-foreground" />}
+                {showIntel ? <Wifi className="w-3 h-3 text-amber-400" /> : <WifiOff className="w-3 h-3 text-muted-foreground" />}
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("action_phase.liveFeed")}</p>
               </div>
-              <div className="space-y-2 max-h-36 overflow-y-auto">
+              <div className="space-y-2 max-h-32 overflow-y-auto">
                 {intelAlerts.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic">
-                    {draft.intelAllocation > 0 ? t("action_phase.monitoringText") : t("action_phase.enableIntel")}
+                    {showIntel ? t("action_phase.monitoringText") : t("action_phase.enableIntel")}
                   </p>
                 ) : (
                   [...intelAlerts].reverse().map((alert) => (
-                    <div key={alert.id} className={`flex items-start gap-2 p-2.5 rounded-lg border text-xs slide-in-right ${
+                    <div key={alert.id} className={`flex items-start gap-2 p-2 rounded-lg border text-xs slide-in-right ${
                       alert.type === "price" ? "bg-red-500/10 border-red-500/20 text-red-300"
                       : alert.type === "production" ? "bg-orange-500/10 border-orange-500/20 text-orange-300"
                       : "bg-cyan-500/10 border-cyan-500/20 text-cyan-300"}`}>
@@ -274,21 +343,34 @@ export function ActionPhase() {
               </div>
             </div>
 
+            {/* Your position estimate */}
             <div className="bg-card border border-card-border rounded-xl p-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{t("action_phase.yourPosition")}</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-center p-3 rounded-lg bg-secondary/50">
                   <p className="text-[10px] text-muted-foreground mb-1">{t("action_phase.estRevenue")}</p>
                   <p className="text-sm font-mono font-bold text-emerald-400">
-                    {formatMoney(Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost) * draft.price * 0.6)}
+                    {formatMoney(Math.floor(estCapacity * draft.price * 0.55))}
                   </p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">±15% est.</p>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-secondary/50">
                   <p className="text-[10px] text-muted-foreground mb-1">{t("action_phase.estMargin")}</p>
                   <p className={`text-sm font-mono font-bold ${priceOverCeiling ? "text-red-400" : "text-blue-400"}`}>
-                    {priceOverCeiling ? "~0%" : `${(((draft.price - effectiveUnitCost) / draft.price) * 100).toFixed(0)}%`}
+                    {priceOverCeiling ? "~0%" : `${(((draft.price - effectiveUnitCost) / Math.max(draft.price, 1)) * 100).toFixed(0)}%`}
                   </p>
                 </div>
+              </div>
+              {/* Component quick-stats */}
+              <div className="mt-3 flex gap-2 flex-wrap">
+                {(["chip", "battery", "display", "memory"] as const).map((c) => {
+                  const ICONS: Record<string, string> = { chip: "🔬", battery: "🔋", display: "🖥️", memory: "💾" };
+                  return (
+                    <span key={c} className="text-[10px] font-mono bg-white/5 px-1.5 py-0.5 rounded text-white/50">
+                      {ICONS[c]} L{components[c]}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>

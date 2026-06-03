@@ -1,8 +1,12 @@
+// ===== GAME PAGE v3 =====
+// หน้าเกมหลัก — เพิ่ม boardmeeting phase routing
+
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { MetricsHeader } from "@/components/MetricsHeader";
 import { IntelPhase } from "@/components/IntelPhase";
+import { BoardMeetingPhase } from "@/components/BoardMeetingPhase";
 import { EventPhase } from "@/components/EventPhase";
 import { ActionPhase } from "@/components/ActionPhase";
 import { ResolutionPhase } from "@/components/ResolutionPhase";
@@ -10,11 +14,15 @@ import { GameOver } from "@/components/GameOver";
 import { CommandCenter } from "@/components/CommandCenter";
 import { Building2, Lock } from "lucide-react";
 
+// Ticker strip สำหรับแสดง phase tracker + live info
 function PhaseTicker() {
   const { phase, quarter } = useGameStore();
   const { t } = useT();
-  const labels: Array<{ key: string; label: string }> = [
+
+  // v3: 5 phases (เพิ่ม boardmeeting)
+  const labels = [
     { key: "intel", label: t("phases.intel") },
+    { key: "boardmeeting", label: t("phases.boardmeeting") },
     { key: "event", label: t("phases.event") },
     { key: "action", label: t("phases.action") },
     { key: "resolution", label: t("phases.resolution") },
@@ -26,7 +34,7 @@ function PhaseTicker() {
       <div className="flex items-center gap-1 shrink-0 mr-2">
         {labels.map((p, i) => (
           <div key={p.key} className="flex items-center gap-1">
-            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-semibold transition-all ${
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-semibold transition-all whitespace-nowrap ${
               p.key === phase ? "bg-primary/15 text-primary border border-primary/30"
               : i < phaseIndex ? "text-muted-foreground/40 line-through"
               : "text-muted-foreground/60"
@@ -34,11 +42,11 @@ function PhaseTicker() {
               <span className="font-mono text-[9px]">0{i + 1}</span>
               {p.label}
             </div>
-            {i < labels.length - 1 && <div className={`w-4 h-px ${i < phaseIndex ? "bg-primary/40" : "bg-border"}`} />}
+            {i < labels.length - 1 && <div className={`w-3 h-px ${i < phaseIndex ? "bg-primary/40" : "bg-border"}`} />}
           </div>
         ))}
       </div>
-      <div className="ml-auto shrink-0 overflow-hidden w-64 relative">
+      <div className="ml-auto shrink-0 overflow-hidden w-52 relative">
         <div className="ticker-text whitespace-nowrap text-[10px] text-muted-foreground font-mono">
           SILICON EMPIRE · GUFUTON INC. · Q{quarter}/16 · ACTIVE SESSION · MARKET LIVE
         </div>
@@ -63,15 +71,17 @@ export default function Game() {
       <MetricsHeader />
       <PhaseTicker />
 
-      <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-20">
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-24">
         <div className="max-w-4xl mx-auto">
-          {phase === "intel" && <IntelPhase />}
-          {phase === "event" && <EventPhase />}
-          {phase === "action" && <ActionPhase />}
-          {phase === "resolution" && <ResolutionPhase />}
+          {phase === "intel"        && <IntelPhase />}
+          {phase === "boardmeeting" && <BoardMeetingPhase />}
+          {phase === "event"        && <EventPhase />}
+          {phase === "action"       && <ActionPhase />}
+          {phase === "resolution"   && <ResolutionPhase />}
         </div>
       </main>
 
+      {/* Command Center FAB */}
       <div className="fixed bottom-4 right-4 z-30">
         <button
           onClick={() => setCommandCenterOpen(true)}

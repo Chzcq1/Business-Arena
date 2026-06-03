@@ -1,3 +1,6 @@
+// ===== INTEL PHASE =====
+// เฟสข่าวกรองตลาด → ไปยัง Board Meeting (v3: เปลี่ยน advanceToEvent → advanceToBoardMeeting)
+
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { TrendingUp, TrendingDown, Minus, Eye, EyeOff, AlertTriangle, ArrowRight } from "lucide-react";
@@ -16,7 +19,8 @@ function CompetitorBadge({ activity, t }: { activity: MarketIntel["competitorAct
 }
 
 export function IntelPhase() {
-  const { marketIntel, quarter, player, advanceToEvent } = useGameStore();
+  // v3: ใช้ advanceToBoardMeeting แทน advanceToEvent
+  const { marketIntel, quarter, player, advanceToBoardMeeting } = useGameStore();
   const { t } = useT();
 
   if (!marketIntel) return null;
@@ -70,8 +74,11 @@ export function IntelPhase() {
         </div>
       )}
 
-      <button onClick={advanceToEvent}
-        className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors pulse-glow">
+      {/* v3: ปุ่มไปยัง Board Meeting (ไม่ใช่ Event โดยตรง) */}
+      <button
+        onClick={advanceToBoardMeeting}
+        className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors pulse-glow"
+      >
         {t("intel_phase.proceed")}
         <ArrowRight className="w-4 h-4" />
       </button>

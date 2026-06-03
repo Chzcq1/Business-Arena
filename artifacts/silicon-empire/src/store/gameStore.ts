@@ -7,7 +7,7 @@ import type {
   Executives, Upgrades, LoanState, BiddingWar, SabotageState,
   AntitrustState, ComponentsState, BoardDirective, QuarterEvent,
   IntelAlert, ResolutionResult, MarketIntel, BotScheduledAction,
-  CapitalHistoryEntry,
+  CapitalHistoryEntry, CEOBackgroundType, CEOBackground,
 } from "./types";
 
 // ===== CONSTANTS =====
@@ -16,6 +16,34 @@ const MAX_QUARTERS = 16;                  // จำนวนไตรมาส�
 const INSTANT_WIN_CAPITAL = 1_000_000_000; // เงื่อนไขชนะทันที: $1B
 const BASE_UNIT_COST = 200;               // ต้นทุนฐานต่อหน่วย $200
 const TOTAL_MARKET = 5_000_000;           // ตลาดรวม 5 ล้านหน่วย (v3: เพิ่มสเกล)
+
+// ===== CEO BACKGROUND DEFINITIONS =====
+const CEO_BACKGROUNDS: Record<CEOBackgroundType, CEOBackground> = {
+  visionary: {
+    type: "visionary",
+    productionCostModifier: 1.0,   // ต้นทุนปกติ
+    ecotechModifier: 1.25,         // EcoTech +25% (เน้น R&D)
+    brandLoyalistBonus: 1.15,      // Brand segment +15%
+    eWastePenaltyReduction: 0.85,  // E-Waste penalty −15%
+    priceCeilingModifier: 1.1,     // Price ceiling +10%
+  },
+  marketer: {
+    type: "marketer",
+    productionCostModifier: 0.9,   // ต้นทุน −10%
+    ecotechModifier: 1.0,          // EcoTech ปกติ
+    brandLoyalistBonus: 1.3,       // Brand segment +30% (เน้นแบรนด์มากที่สุด)
+    eWastePenaltyReduction: 1.0,   // E-Waste penalty ปกติ
+    priceCeilingModifier: 1.0,     // Price ceiling ปกติ
+  },
+  operator: {
+    type: "operator",
+    productionCostModifier: 0.85,  // ต้นทุน −15% (เน้นประสิทธิภาพ)
+    ecotechModifier: 1.0,          // EcoTech ปกติ
+    brandLoyalistBonus: 1.0,       // Brand segment ปกติ
+    eWastePenaltyReduction: 0.7,   // E-Waste penalty −30% (ลดมากที่สุด)
+    priceCeilingModifier: 0.95,    // Price ceiling −5% (ต้องให้ราคาน้อยกว่า)
+  },
+};
 
 // ต้นทุน EcoTech สำหรับ upgrade component แต่ละระดับ
 // index = ระดับที่จะ upgrade ไป (L1→L2=index 2, L2→L3=index 3, ฯลฯ)
@@ -200,13 +228,14 @@ function resolveQuarter(
   components: ComponentsState,
   boardDirective: BoardDirective | null,
   quarter: number,
+  ceoBackground: CEOBackground,
 ): Omit<ResolutionResult, "botEventLabel"> {
 
-  // === ต้นทุนต่อหน่วย (สูตร Exponential Bottleneck v3) ===
+  // === ต้นทุนต่อหน่วย (สูตร Exponential Bottleneck v3 + CEO modifier) ===
   const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
   // Memory L3+ ลดต้นทุนการผลิต
   const memoryDiscount = [1.0, 1.0, 1.0, 0.97, 0.95, 0.93][clamp(components.memory, 0, 5)];
-  const baseCost = BASE_UNIT_COST * factoryDiscount * memoryDiscount;
+  const baseCost = BASE_UNIT_COST * factoryDiscount * memoryDiscount * ceoBackground.productionCostModifier;
 
   // Bottleneck formula: ยิ่งผลิตมาก ยิ่งแพง (anti-exploit)
   // $5M → 1.1×, $10M → 1.4×, $15M → 1.9×, $20M → 2.6×
@@ -239,13 +268,13 @@ function resolveQuarter(
   const rawTechShare = 0.5 + (player.techLevel - (bot.techLevel + (bot.components?.chip ?? 1) * 0.2)) * 0.10;
   const techShare = clamp(rawTechShare * chipMultiplier, 0.05, 0.97);
 
-  // Brand Loyalists: brand perception + display
+  // Brand Loyalists: brand perception + display + CEO modifier
   const displayBrandBonus = components.display >= 5 ? 1.20 : components.display >= 4 ? 1.10 : 1.0;
-  const brandShare = clamp((0.5 + (player.brandPerception - bot.brandPerception) * 0.008) * displayBrandBonus, 0.05, 0.95);
+  const brandShare = clamp((0.5 + (player.brandPerception - bot.brandPerception) * 0.008) * displayBrandBonus * ceoBackground.brandLoyalistBonus, 0.05, 0.95);
 
-  // Price elasticity: ราคาเกิน tech ceiling → demand ลด
+  // Price elasticity: ราคาเกิน tech ceiling → demand ลด + CEO modifier
   const displayCeilingMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][clamp(components.display, 0, 5)];
-  const maxViablePrice = player.techLevel * 200 * displayCeilingMult;
+  const maxViablePrice = player.techLevel * 200 * displayCeilingMult * ceoBackground.priceCeilingModifier;
   let demandFactor = 1.0;
   if (draft.price > maxViablePrice) {
     demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
@@ -289,11 +318,12 @@ function resolveQuarter(
   const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
   const segBrand  = Math.max(0, playerSales - segBudget - segTech);
 
-  // === ค่าปรับ E-Waste: สูตร SEVERE v3 ===
-  // Capital Deduction = UnsoldInventory × UnitCost × 1.5
+  // === ค่าปรับ E-Waste: สูตร SEVERE v3 + CEO reduction ===
+  // Capital Deduction = UnsoldInventory × UnitCost × 1.5 × (1 - CEO reduction)
   // (บน: ทำให้การผลิตสูงสุดโดยไม่ดูตลาดเป็นหายนะ)
   const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
-  const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 1.5);
+  const baseEWaste = playerUnsold * effectiveUnitCost * 1.5;
+  const eWastePenalty = Math.floor(baseEWaste * ceoBackground.eWastePenaltyReduction);
 
   // === รายได้และกำไร ===
   const playerRevenue = Math.floor(playerSales * draft.price * revenueMultiplier);
@@ -334,11 +364,12 @@ function resolveQuarter(
   if (boardDirective === "austerity") moraleChange -= 5;
   if (boardDirective === "talent_retention") moraleChange += 10;
 
-  // EcoTech earned ไตรมาสนี้
+  // EcoTech earned ไตรมาสนี้ + CEO modifier
   let ecotechEarned = 2; // base
   if (upgrades.legendaryEngineer) ecotechEarned += 2;
   if (components.chip >= 4) ecotechEarned += 1;
   if (boardDirective === "aggressive_rd") ecotechEarned += 3;
+  ecotechEarned = Math.round(ecotechEarned * ceoBackground.ecotechModifier);
 
   // Summary key
   let summaryKey = "summaries.default";
@@ -393,6 +424,7 @@ interface GameState {
   // Player
   player: PlayerMetrics;
   draft: PlayerDraft;
+  ceoBackground: CEOBackground | null;  // ใหม่: ท่าที CEO
 
   // Bot
   bot: BotState;
@@ -430,6 +462,7 @@ interface GameState {
 
   // ===== ACTIONS =====
   startGame: () => void;
+  selectCEOBackground: (type: CEOBackgroundType) => void;  // ใหม่: เลือก CEO class
   advanceToBoardMeeting: () => void;   // intel → board meeting
   chooseBoardDirective: (d: BoardDirective) => void; // board meeting → event
   resolveEvent: (choiceId: string) => void;
@@ -461,13 +494,14 @@ interface GameState {
 // ===== STORE =====
 export const useGameStore = create<GameState>((set, get) => ({
   // Initial state
-  phase: "intel",
+  phase: "ceoselect",
   quarter: 1,
   gameResult: "playing",
   language: "en",
 
   player: { ...INIT_PLAYER },
   draft: { ...INIT_DRAFT },
+  ceoBackground: null,
   bot: { ...INIT_BOT },
 
   quarterTimer: QUARTER_DURATION,
@@ -501,6 +535,20 @@ export const useGameStore = create<GameState>((set, get) => ({
   startGame: () => {
     const intel = generateMarketIntel(INIT_PLAYER);
     set({
+      phase: "intel",
+      quarter: 1,
+      gameResult: "playing",
+      marketIntel: intel,
+      capitalHistory: [{ quarter: 0, playerCapital: INIT_PLAYER.capital, botCapital: INIT_BOT.capital }],
+    });
+  },
+
+  // ใหม่: เลือก CEO Background แล้วไปยัง intel phase
+  selectCEOBackground: (type) => {
+    const ceoBackground = CEO_BACKGROUNDS[type];
+    const intel = generateMarketIntel(INIT_PLAYER);
+    set({
+      ceoBackground,
       phase: "intel",
       quarter: 1,
       gameResult: "playing",
@@ -641,12 +689,15 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   lockAndResolve: () => {
-    const { player, draft, bot, executives, upgrades, loans, sabotage, components, boardDirective, quarter, antitrust, capitalHistory } = get();
+    const { player, draft, bot, executives, upgrades, loans, sabotage, components, boardDirective, quarter, antitrust, capitalHistory, ceoBackground } = get();
+
+    // ตรวจสอบว่า CEO Background มีการเลือกแล้ว
+    if (!ceoBackground) return;
 
     // คำนวณผลลัพธ์ (pure function)
     const rawResult = resolveQuarter(
       player, draft, bot, executives, upgrades, loans, sabotage,
-      components, boardDirective, quarter
+      components, boardDirective, quarter, ceoBackground
     );
 
     // === Bot Events (v3: บอทมีเหตุการณ์ด้วย) ===
@@ -889,11 +940,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   resetGame: () => {
     set({
-      phase: "intel",
+      phase: "ceoselect",
       quarter: 1,
       gameResult: "playing",
       player: { ...INIT_PLAYER },
       draft: { ...INIT_DRAFT },
+      ceoBackground: null,
       bot: { ...INIT_BOT },
       quarterTimer: QUARTER_DURATION,
       timerRunning: false,

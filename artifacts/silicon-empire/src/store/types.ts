@@ -2,6 +2,7 @@
 // ประเภทข้อมูลหลักของเกม Silicon Empire
 
 export type GamePhase =
+  | "ceoselect"     // เฟสเลือก CEO Career (ก่อนเริ่มเกม)
   | "intel"         // เฟสข่าวกรองตลาด
   | "boardmeeting"  // เฟสประชุมบอร์ด (เลือก Directive + ดู Component Status)
   | "event"         // เฟสเหตุการณ์สุ่ม
@@ -32,6 +33,17 @@ export interface ComponentsState {
   battery: number; // Battery: milestone requirement + brand
   display: number; // Display: ส่งผลต่อ price ceiling + Brand Loyalist
   memory: number;  // Memory: ส่งผลต่อ Budget Buyer segment + unit cost
+}
+
+export type CEOBackgroundType = "visionary" | "marketer" | "operator";
+
+export interface CEOBackground {
+  type: CEOBackgroundType;
+  productionCostModifier: number;  // คูณกับต้นทุนการผลิต base
+  ecotechModifier: number;         // คูณกับ EcoTech earned per quarter
+  brandLoyalistBonus: number;      // คูณกับ brand segment demand
+  eWastePenaltyReduction: number;  // ลดค่าปรับ E-Waste (เป็น %)
+  priceCeilingModifier: number;    // คูณกับ price ceiling
 }
 
 export interface PlayerMetrics {

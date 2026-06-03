@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { MetricsHeader } from "@/components/MetricsHeader";
+import { CEOSelectionPhase } from "@/components/CEOSelectionPhase";
 import { IntelPhase } from "@/components/IntelPhase";
 import { BoardMeetingPhase } from "@/components/BoardMeetingPhase";
 import { EventPhase } from "@/components/EventPhase";
@@ -62,6 +63,7 @@ export default function Game() {
 
   useEffect(() => { startGame(); }, []);
 
+  if (phase === "ceoselect") return <CEOSelectionPhase />;
   if (phase === "gameover") return <GameOver />;
 
   const isActionPhase = phase === "action";

@@ -15,6 +15,12 @@
     "engineer": "ENGINEER",
     "winTarget": "$1B WIN"
   },
+  "ceo_selection": {
+    "title": "Select Your CEO Career",
+    "subtitle": "Your CEO background determines your market strategy and competitive advantages throughout the game",
+    "select": "Choose This Career",
+    "info": "Your CEO background impacts production costs, brand strength, R&D output, and inventory management. Selection is permanent for this game session."
+  },
   "phases": {
     "intel": "Intel",
     "boardmeeting": "Board",

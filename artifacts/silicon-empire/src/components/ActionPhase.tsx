@@ -72,6 +72,7 @@ export function ActionPhase() {
     quarterTimer, timerRunning, draft, updateDraft, bot, intelAlerts,
     dismissIntelAlert, quarter, player, playerReady, botLocked, upgrades,
     submitReady, biddingWar, components, executives,
+    tradeBanActive, hypeCampaign, launchHypeCampaign,
   } = useGameStore();
   const tickTimer = useGameStore((s) => s.tickTimer);
   const { t } = useT();
@@ -170,8 +171,13 @@ export function ActionPhase() {
         </div>
 
         {/* Warnings */}
-        {(priceOverCeiling || highBudgetWarning) && (
+        {(priceOverCeiling || highBudgetWarning || tradeBanActive) && (
           <div className="flex flex-col gap-1.5">
+            {tradeBanActive && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/30 border border-red-500/50 text-xs text-red-300 font-semibold">
+                <AlertTriangle className="w-3 h-3 shrink-0" />{t("action_phase.tradeBanWarning")}
+              </div>
+            )}
             {priceOverCeiling && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
                 <AlertTriangle className="w-3 h-3 shrink-0" />{t("action_phase.elasticityWarning")} (ceiling: ~${Math.round(maxViablePrice)})
@@ -184,6 +190,52 @@ export function ActionPhase() {
             )}
           </div>
         )}
+
+        {/* Hype Campaign Section */}
+        {(() => {
+          const hypeActive = hypeCampaign?.active && !hypeCampaign.fulfilled;
+          const canLaunch = !hypeActive && player.capital >= 5_000_000 && !isLocked;
+          return (
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">{t("action_phase.hypeTactics")}</p>
+              {hypeActive ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold text-violet-400 animate-pulse">🚀 {t("action_phase.hypeActive")}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{t("action_phase.hypeDeadline")} {hypeCampaign!.deadline} · Demand +40% active</p>
+                    <p className="text-[10px] text-orange-300/80 mt-0.5">{t("hype_campaign.pr_disaster_warning")}</p>
+                  </div>
+                  <div className="text-2xl">🔥</div>
+                </div>
+              ) : hypeCampaign?.fulfilled ? (
+                <div className="text-xs text-emerald-400 font-semibold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" /> {t("hype_campaign.fulfilled")}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-foreground mb-0.5">{t("action_phase.hypeButton")}</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{t("action_phase.hypeDesc")}</p>
+                  </div>
+                  <button
+                    onClick={launchHypeCampaign}
+                    disabled={!canLaunch}
+                    className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                      canLaunch
+                        ? "bg-violet-600/80 text-white hover:bg-violet-600 border border-violet-500/50"
+                        : "bg-secondary/50 text-muted-foreground cursor-not-allowed opacity-50 border border-border"
+                    }`}
+                  >
+                    <Zap className="w-3 h-3" />
+                    {t("action_phase.hypeCost")}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="flex flex-col gap-4">

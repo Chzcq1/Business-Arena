@@ -9,6 +9,7 @@ const TYPE_ICONS: Record<QuarterEvent["type"], React.ReactNode> = {
   regulation: <Scale className="w-5 h-5" />,
   market: <Zap className="w-5 h-5" />,
   tech: <AlertTriangle className="w-5 h-5" />,
+  research: <Zap className="w-5 h-5" />,
 };
 
 const TYPE_COLORS: Record<QuarterEvent["type"], string> = {
@@ -16,6 +17,7 @@ const TYPE_COLORS: Record<QuarterEvent["type"], string> = {
   regulation: "text-blue-400 bg-blue-400/10 border-blue-400/30",
   market: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30",
   tech: "text-violet-400 bg-violet-400/10 border-violet-400/30",
+  research: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30",
 };
 
 const effectLabel = (effect: Record<string, number>) => {

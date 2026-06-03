@@ -1,7 +1,5 @@
-// ===== GAME PAGE v3 =====
-// หน้าเกมหลัก — เพิ่ม boardmeeting phase routing
-
-import { useEffect, useState } from "react";
+// ===== GAME PAGE v4 =====
+import { useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { MetricsHeader } from "@/components/MetricsHeader";
@@ -15,12 +13,16 @@ import { GameOver } from "@/components/GameOver";
 import { CommandCenter } from "@/components/CommandCenter";
 import { Building2, Lock } from "lucide-react";
 
-// Ticker strip สำหรับแสดง phase tracker + live info
+const PERSONA_BADGES: Record<string, { label: string; color: string; icon: string }> = {
+  discount_king: { label: "Discount King", color: "text-red-400 border-red-400/40 bg-red-900/20",  icon: "🔻" },
+  tech_premium:  { label: "Tech Premium",  color: "text-blue-400 border-blue-400/40 bg-blue-900/20", icon: "🔬" },
+  copycat:       { label: "The Copycat",   color: "text-yellow-400 border-yellow-400/40 bg-yellow-900/20", icon: "🐱" },
+};
+
 function PhaseTicker() {
-  const { phase, quarter } = useGameStore();
+  const { phase, quarter, botPersona } = useGameStore();
   const { t } = useT();
 
-  // v3: 5 phases (เพิ่ม boardmeeting)
   const labels = [
     { key: "intel", label: t("phases.intel") },
     { key: "boardmeeting", label: t("phases.boardmeeting") },
@@ -29,6 +31,7 @@ function PhaseTicker() {
     { key: "resolution", label: t("phases.resolution") },
   ];
   const phaseIndex = labels.findIndex((l) => l.key === phase);
+  const persona = botPersona ? PERSONA_BADGES[botPersona] : null;
 
   return (
     <div className="border-b border-border bg-sidebar/50 px-4 py-2 flex items-center gap-3 overflow-x-auto">
@@ -47,9 +50,15 @@ function PhaseTicker() {
           </div>
         ))}
       </div>
-      <div className="ml-auto shrink-0 overflow-hidden w-52 relative">
+      {persona && (
+        <div className={`shrink-0 ml-1 flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${persona.color}`}>
+          <span>{persona.icon}</span>
+          <span className="hidden sm:inline">{persona.label}</span>
+        </div>
+      )}
+      <div className="ml-auto shrink-0 overflow-hidden w-40 relative">
         <div className="ticker-text whitespace-nowrap text-[10px] text-muted-foreground font-mono">
-          SILICON EMPIRE · GUFUTON INC. · Q{quarter}/16 · ACTIVE SESSION · MARKET LIVE
+          SILICON EMPIRE · Q{quarter}/16 · MARKET LIVE
         </div>
       </div>
     </div>
@@ -57,11 +66,9 @@ function PhaseTicker() {
 }
 
 export default function Game() {
-  const { phase, startGame } = useGameStore();
+  const { phase } = useGameStore();
   const { t } = useT();
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
-
-  useEffect(() => { startGame(); }, []);
 
   if (phase === "ceoselect") return <CEOSelectionPhase />;
   if (phase === "gameover") return <GameOver />;

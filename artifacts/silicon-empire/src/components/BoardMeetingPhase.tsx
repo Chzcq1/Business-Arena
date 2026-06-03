@@ -1,53 +1,74 @@
-// ===== BOARD MEETING PHASE =====
-// หน้าประชุมบอร์ด — ผู้เล่นเลือก Directive และตรวจสอบสถานะ Component
+// ===== BOARD MEETING PHASE v4.0 =====
+// 15 directives + dark tactics warning
 
 import { useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import type { BoardDirective } from "@/store/types";
 
-// ไอคอน Directive แต่ละประเภท
+const DARK_TACTICS: BoardDirective[] = ["planned_obsolescence", "industrial_espionage"];
+
 const DIRECTIVE_ICONS: Record<BoardDirective, string> = {
-  aggressive_rd:    "🔬",
-  austerity:        "💹",
-  market_expansion: "📈",
-  brand_campaign:   "📣",
-  cost_cutting:     "⚙️",
-  talent_retention: "🤝",
-  premium_focus:    "💎",
-  volume_play:      "📦",
+  aggressive_rd:        "🔬",
+  austerity:            "💹",
+  market_expansion:     "📈",
+  brand_campaign:       "📣",
+  cost_cutting:         "⚙️",
+  talent_retention:     "🤝",
+  premium_focus:        "💎",
+  volume_play:          "📦",
+  // Dark Tactics
+  planned_obsolescence: "☠️",
+  industrial_espionage: "🕵️",
+  // New
+  flash_sale:           "⚡",
+  viral_launch:         "🚀",
+  headcount_freeze:     "🧊",
+  supply_chain_deal:    "🔗",
+  green_initiative:     "🌿",
 };
 
 const DIRECTIVE_COLORS: Record<BoardDirective, string> = {
-  aggressive_rd:    "border-blue-500/50 hover:border-blue-400",
-  austerity:        "border-orange-500/50 hover:border-orange-400",
-  market_expansion: "border-green-500/50 hover:border-green-400",
-  brand_campaign:   "border-purple-500/50 hover:border-purple-400",
-  cost_cutting:     "border-yellow-500/50 hover:border-yellow-400",
-  talent_retention: "border-cyan-500/50 hover:border-cyan-400",
-  premium_focus:    "border-pink-500/50 hover:border-pink-400",
-  volume_play:      "border-indigo-500/50 hover:border-indigo-400",
+  aggressive_rd:        "border-blue-500/50 hover:border-blue-400",
+  austerity:            "border-orange-500/50 hover:border-orange-400",
+  market_expansion:     "border-green-500/50 hover:border-green-400",
+  brand_campaign:       "border-purple-500/50 hover:border-purple-400",
+  cost_cutting:         "border-yellow-500/50 hover:border-yellow-400",
+  talent_retention:     "border-cyan-500/50 hover:border-cyan-400",
+  premium_focus:        "border-pink-500/50 hover:border-pink-400",
+  volume_play:          "border-indigo-500/50 hover:border-indigo-400",
+  planned_obsolescence: "border-red-600/70 hover:border-red-500",
+  industrial_espionage: "border-red-600/70 hover:border-red-500",
+  flash_sale:           "border-amber-500/50 hover:border-amber-400",
+  viral_launch:         "border-violet-500/50 hover:border-violet-400",
+  headcount_freeze:     "border-slate-500/50 hover:border-slate-400",
+  supply_chain_deal:    "border-teal-500/50 hover:border-teal-400",
+  green_initiative:     "border-emerald-500/50 hover:border-emerald-400",
 };
 
 const DIRECTIVE_SELECTED: Record<BoardDirective, string> = {
-  aggressive_rd:    "border-blue-400 bg-blue-900/30",
-  austerity:        "border-orange-400 bg-orange-900/30",
-  market_expansion: "border-green-400 bg-green-900/30",
-  brand_campaign:   "border-purple-400 bg-purple-900/30",
-  cost_cutting:     "border-yellow-400 bg-yellow-900/30",
-  talent_retention: "border-cyan-400 bg-cyan-900/30",
-  premium_focus:    "border-pink-400 bg-pink-900/30",
-  volume_play:      "border-indigo-400 bg-indigo-900/30",
+  aggressive_rd:        "border-blue-400 bg-blue-900/30",
+  austerity:            "border-orange-400 bg-orange-900/30",
+  market_expansion:     "border-green-400 bg-green-900/30",
+  brand_campaign:       "border-purple-400 bg-purple-900/30",
+  cost_cutting:         "border-yellow-400 bg-yellow-900/30",
+  talent_retention:     "border-cyan-400 bg-cyan-900/30",
+  premium_focus:        "border-pink-400 bg-pink-900/30",
+  volume_play:          "border-indigo-400 bg-indigo-900/30",
+  planned_obsolescence: "border-red-500 bg-red-950/50",
+  industrial_espionage: "border-red-500 bg-red-950/50",
+  flash_sale:           "border-amber-400 bg-amber-900/30",
+  viral_launch:         "border-violet-400 bg-violet-900/30",
+  headcount_freeze:     "border-slate-400 bg-slate-900/30",
+  supply_chain_deal:    "border-teal-400 bg-teal-900/30",
+  green_initiative:     "border-emerald-400 bg-emerald-900/30",
 };
 
 function ComponentLevelBar({ level, max = 5 }: { level: number; max?: number }) {
   return (
     <div className="flex gap-0.5 items-center">
       {Array.from({ length: max }).map((_, i) => (
-        <div
-          key={i}
-          className={`h-2 w-4 rounded-sm transition-all ${i < level ? "bg-emerald-400" : "bg-white/10"}`}
-        />
+        <div key={i} className={`h-2 w-4 rounded-sm transition-all ${i < level ? "bg-emerald-400" : "bg-white/10"}`} />
       ))}
     </div>
   );
@@ -55,7 +76,7 @@ function ComponentLevelBar({ level, max = 5 }: { level: number; max?: number }) 
 
 export function BoardMeetingPhase() {
   const { t } = useT();
-  const { quarter, pendingDirectives, components, player, chooseBoardDirective } = useGameStore();
+  const { quarter, pendingDirectives, components, player, chooseBoardDirective, tradeBanActive, prDisasterActive } = useGameStore();
   const [selected, setSelected] = useState<BoardDirective | null>(null);
 
   function handleCommit() {
@@ -63,7 +84,8 @@ export function BoardMeetingPhase() {
     chooseBoardDirective(selected);
   }
 
-  // Milestone warnings
+  const isDarkTactic = selected ? DARK_TACTICS.includes(selected) : false;
+
   const warnings: string[] = [];
   if (quarter >= 2 && components.battery < 2)
     warnings.push("⚠ Battery below L2 — Q3 brings −20% revenue penalty unless upgraded.");
@@ -90,6 +112,18 @@ export function BoardMeetingPhase() {
         </div>
       </div>
 
+      {/* Active Status Banners */}
+      {tradeBanActive && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-red-900/30 border border-red-500/50 rounded-xl text-sm text-red-300 font-semibold">
+          🚫 TRADE BAN ACTIVE — You cannot sell this quarter. Plan ahead.
+        </div>
+      )}
+      {prDisasterActive && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-orange-900/30 border border-orange-500/50 rounded-xl text-sm text-orange-300 font-semibold">
+          📰 PR DISASTER — Demand halved this quarter + $10M fine at resolution.
+        </div>
+      )}
+
       {/* Milestone Warnings */}
       {warnings.length > 0 && (
         <div className="space-y-1.5">
@@ -108,6 +142,7 @@ export function BoardMeetingPhase() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {pendingDirectives.map((directive) => {
             const isSelected = selected === directive;
+            const isDark = DARK_TACTICS.includes(directive);
             return (
               <button
                 key={directive}
@@ -115,7 +150,14 @@ export function BoardMeetingPhase() {
                 className={`text-left p-4 rounded-xl border-2 transition-all cursor-pointer
                   ${isSelected ? DIRECTIVE_SELECTED[directive] : `bg-card ${DIRECTIVE_COLORS[directive]}`}`}
               >
-                <div className="text-2xl mb-2">{DIRECTIVE_ICONS[directive]}</div>
+                <div className="flex items-start justify-between mb-2">
+                  <span className="text-2xl">{DIRECTIVE_ICONS[directive]}</span>
+                  {isDark && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-500/60 text-red-400 bg-red-900/30">
+                      DARK
+                    </span>
+                  )}
+                </div>
                 <div className="font-semibold text-sm text-foreground mb-1">
                   {t(`directives.${directive}`)}
                 </div>
@@ -123,13 +165,23 @@ export function BoardMeetingPhase() {
                   {t(`directives.${directive}_desc`)}
                 </div>
                 {isSelected && (
-                  <div className="mt-2 text-xs font-mono text-primary">✓ Selected</div>
+                  <div className={`mt-2 text-xs font-mono ${isDark ? "text-red-400" : "text-primary"}`}>
+                    {isDark ? "⚠ High Risk Selected" : "✓ Selected"}
+                  </div>
                 )}
               </button>
             );
           })}
         </div>
       </div>
+
+      {/* Dark Tactic Warning Banner */}
+      {isDarkTactic && (
+        <div className="px-4 py-3 rounded-xl bg-red-900/25 border border-red-500/40 text-xs text-red-300 leading-relaxed">
+          <span className="font-bold text-red-400">⚠ {t("board_meeting.darkTacticWarning")}</span>
+          <span className="ml-1">{t(`directives.${selected}_desc`)}</span>
+        </div>
+      )}
 
       {/* Component Status */}
       <div>
@@ -160,7 +212,9 @@ export function BoardMeetingPhase() {
         disabled={!selected}
         className={`w-full py-3.5 rounded-xl font-semibold text-sm tracking-wider transition-all
           ${selected
-            ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer pulse-glow"
+            ? isDarkTactic
+              ? "bg-red-600/80 text-white hover:bg-red-600 cursor-pointer border border-red-500/50"
+              : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer pulse-glow"
             : "bg-secondary text-muted-foreground cursor-not-allowed opacity-50"
           }`}
       >

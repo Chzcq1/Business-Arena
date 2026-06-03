@@ -1,65 +1,85 @@
-// ===== SILICON EMPIRE v3 — Type Definitions =====
-// ประเภทข้อมูลหลักของเกม Silicon Empire
+// ===== SILICON EMPIRE v4 — Type Definitions =====
 
 export type GamePhase =
-  | "ceoselect"     // เฟสเลือก CEO Career (ก่อนเริ่มเกม)
-  | "intel"         // เฟสข่าวกรองตลาด
-  | "boardmeeting"  // เฟสประชุมบอร์ด (เลือก Directive + ดู Component Status)
-  | "event"         // เฟสเหตุการณ์สุ่ม
-  | "action"        // เฟสดำเนินการ (ตั้งราคา + กำลังผลิต)
-  | "resolution"    // เฟสสรุปผลไตรมาส
-  | "gameover";     // จบเกม
+  | "ceoselect"
+  | "intel"
+  | "boardmeeting"
+  | "event"
+  | "action"
+  | "resolution"
+  | "gameover";
 
 export type GameResult =
-  | "playing"          // กำลังเล่น
-  | "won_instant"      // ชนะทันที (ถึง $1B)
-  | "won_timeout"      // ชนะหมดเวลา (ทุนสูงกว่า Q16)
-  | "won_timeout_lost" // แพ้หมดเวลา (ทุนน้อยกว่า Q16)
-  | "bankrupt";        // ล้มละลาย
+  | "playing"
+  | "won_instant"
+  | "won_timeout"
+  | "won_timeout_lost"
+  | "bankrupt";
+
+// v4.0: Bot personality
+export type BotPersonaType = "discount_king" | "tech_premium" | "copycat";
 
 export type BoardDirective =
-  | "aggressive_rd"    // R&D เชิงรุก: +2 EcoTech, +10% ต้นทุน
-  | "austerity"        // มาตรการรัดเข็มขัด: -15% fixed cost, -5 morale
-  | "market_expansion" // ขยายตลาด: +10% demand, margin ลดลง
-  | "brand_campaign"   // แคมเปญแบรนด์: +15 brand, -$5M
-  | "cost_cutting"     // ลดต้นทุน: -15% unit cost, -5 brand
-  | "talent_retention" // รักษาพนักงาน: +10 morale, -$3M
-  | "premium_focus"    // โฟกัส premium: price ceiling +15%
-  | "volume_play";     // เน้นปริมาณ: budget demand +15%, tech demand -5%
+  | "aggressive_rd"
+  | "austerity"
+  | "market_expansion"
+  | "brand_campaign"
+  | "cost_cutting"
+  | "talent_retention"
+  | "premium_focus"
+  | "volume_play"
+  // v4.0 — Dark Tactics
+  | "planned_obsolescence"
+  | "industrial_espionage"
+  // v4.0 — New Directives
+  | "flash_sale"
+  | "viral_launch"
+  | "headcount_freeze"
+  | "supply_chain_deal"
+  | "green_initiative";
 
-// ระดับของแต่ละ component (0=ไม่มี, 1-5=ระดับ 1-5)
 export interface ComponentsState {
-  chip: number;    // Processor: ส่งผลต่อ Tech Enthusiast segment
-  battery: number; // Battery: milestone requirement + brand
-  display: number; // Display: ส่งผลต่อ price ceiling + Brand Loyalist
-  memory: number;  // Memory: ส่งผลต่อ Budget Buyer segment + unit cost
+  chip: number;
+  battery: number;
+  display: number;
+  memory: number;
 }
 
 export type CEOBackgroundType = "visionary" | "marketer" | "operator";
 
 export interface CEOBackground {
   type: CEOBackgroundType;
-  productionCostModifier: number;  // คูณกับต้นทุนการผลิต base
-  ecotechModifier: number;         // คูณกับ EcoTech earned per quarter
-  brandLoyalistBonus: number;      // คูณกับ brand segment demand
-  eWastePenaltyReduction: number;  // ลดค่าปรับ E-Waste (เป็น %)
-  priceCeilingModifier: number;    // คูณกับ price ceiling
+  productionCostModifier: number;
+  ecotechModifier: number;
+  ecotechCostModifier: number;     // v4.0: × EcoTech upgrade costs
+  brandLoyalistBonus: number;
+  eWastePenaltyReduction: number;
+  priceCeilingModifier: number;
+}
+
+// v4.0: Hype Campaign state
+export interface HypeCampaignState {
+  active: boolean;
+  deadline: number;
+  techLevelAtLaunch: number;
+  componentTotalAtLaunch: number;
+  fulfilled: boolean;
 }
 
 export interface PlayerMetrics {
-  capital: number;          // ทุนรวม (เงิน)
-  morale: number;           // ขวัญกำลังใจทีม (0-100)
-  techLevel: number;        // ระดับเทคโนโลยีรวม (1-10)
-  marketShare: number;      // ส่วนแบ่งตลาด (%)
-  intelPoints: number;      // แต้มข่าวกรอง
-  brandPerception: number;  // ความนิยมของแบรนด์ (0-100) — ใหม่ v3
-  ecotech: number;          // แต้ม EcoTech สำหรับ upgrade components — ใหม่ v3
+  capital: number;
+  morale: number;
+  techLevel: number;
+  marketShare: number;
+  intelPoints: number;
+  brandPerception: number;
+  ecotech: number;
 }
 
 export interface PlayerDraft {
-  price: number;            // ราคาต่อหน่วย
-  productionBudget: number; // งบประมาณการผลิต (เพิ่มสเกลเป็น $1M-$20M ใน v3)
-  intelAllocation: number;  // จำนวน Intel Points ที่จัดสรร
+  price: number;
+  productionBudget: number;
+  intelAllocation: number;
 }
 
 export interface BotState {
@@ -67,31 +87,30 @@ export interface BotState {
   productionBudget: number;
   capital: number;
   marketShare: number;
-  techLevel: number;           // ระดับเทค bot (เพิ่มขึ้นตามเวลา) — ใหม่ v3
-  brandPerception: number;     // Bot ก็มี brand perception ด้วย — ใหม่ v3
-  ecotech: number;             // Bot R&D equivalent
-  components: ComponentsState; // Bot ก็ upgrade components ได้ — ใหม่ v3
+  techLevel: number;
+  brandPerception: number;
+  ecotech: number;
+  components: ComponentsState;
   lastMoveLabel: string | null;
   lastMoveTime: number | null;
   hasFactory: boolean;
 }
 
 export interface Executives {
-  cfo: boolean; // CFO: ลดดอกเบี้ยกู้ + ลด E-Waste penalty
-  coo: boolean; // COO: จำกัด cost multiplier
+  cfo: boolean;
+  coo: boolean;
 }
 
 export interface Upgrades {
-  componentFactory: boolean;  // ลดต้นทุนชิ้นส่วน 25%
-  legendaryEngineer: boolean; // +2 EcoTech/quarter + tech growth
+  componentFactory: boolean;
+  legendaryEngineer: boolean;
 }
 
-// สถานะเงินกู้ธนาคาร — แก้บัก: ใช้ได้ 1 ครั้งต่อเกมหรือหลังชำระหมด
 export interface LoanState {
-  outstanding: number;         // ยอดหนี้คงค้าง
-  quartersRemaining: number;   // ไตรมาสที่เหลือต้องชำระ
-  repaymentPerQuarter: number; // ยอดชำระต่อไตรมาส
-  totalLoansEver: number;      // จำนวนครั้งที่กู้ทั้งหมด (limit: max 3 ครั้ง)
+  outstanding: number;
+  quartersRemaining: number;
+  repaymentPerQuarter: number;
+  totalLoansEver: number;
 }
 
 export interface BiddingWar {
@@ -100,26 +119,23 @@ export interface BiddingWar {
 }
 
 export interface SabotageState {
-  ddosPending: boolean; // โจมตี DDOS bot ไตรมาสนี้
-  prPending: boolean;   // PR warfare bot ไตรมาสนี้
-  cooldown: boolean;    // ใช้ไปแล้วไตรมาสนี้
+  ddosPending: boolean;
+  prPending: boolean;
+  cooldown: boolean;
 }
 
-// สถานะ Antitrust — เมื่อครองตลาด >60% ติดต่อกัน 2 ไตรมาส
 export interface AntitrustState {
-  playerHighShareStreak: number;  // ไตรมาสที่ผู้เล่นครอง >60% ติดกัน
-  playerBlocked: boolean;         // ถูกระงับ M&A + Sabotage
-  playerBlockedQuartersLeft: number; // เหลืออีกกี่ไตรมาส
+  playerHighShareStreak: number;
+  playerBlocked: boolean;
+  playerBlockedQuartersLeft: number;
 }
 
-// ประวัติทุนสำหรับแสดงกราฟ — ใหม่ v3
 export interface CapitalHistoryEntry {
   quarter: number;
   playerCapital: number;
   botCapital: number;
 }
 
-// Bilingual text สำหรับ events
 export interface EventLocale {
   title: string;
   description: string;
@@ -141,8 +157,8 @@ export interface QuarterEvent {
 export interface EventChoice {
   id: string;
   effect: Partial<PlayerMetrics> & {
-    intelBonus?: number;   // +Intel Points
-    ecotechBonus?: number; // +EcoTech Points — ใหม่ v3
+    intelBonus?: number;
+    ecotechBonus?: number;
   };
   en: ChoiceLocale;
   th: ChoiceLocale;
@@ -155,46 +171,40 @@ export interface IntelAlert {
   type: "price" | "production" | "strategy" | "bot_event";
 }
 
-// ผลลัพธ์การสรุปผลไตรมาส — ขยายใน v3
 export interface ResolutionResult {
-  // ยอดขาย
   playerSalesUnits: number;
   botSalesUnits: number;
-  // รายได้
   playerRevenue: number;
   botRevenue: number;
   grossProfit: number;
   playerProfit: number;
   botProfit: number;
-  // ส่วนแบ่งตลาด
   newPlayerMarketShare: number;
   newBotMarketShare: number;
-  // การเปลี่ยนแปลง
   capitalChange: number;
   moraleChange: number;
-  brandChange: number;         // การเปลี่ยนแปลง brand perception
-  ecotechEarned: number;       // EcoTech ที่ได้รับไตรมาสนี้
-  // ค่าปรับและหนี้
+  brandChange: number;
+  ecotechEarned: number;
   eWastePenalty: number;
   eWasteUnits: number;
   debtRepayment: number;
-  // เทค
   techGrowth: number;
-  // ข้อมูลเพิ่มเติมสำหรับ UI
   effectiveUnitCost: number;
   playerCapacity: number;
   playerRawDemand: number;
   demandFactor: number;
-  // 3-segment breakdown — ใหม่ v3
-  segmentBudget: number;      // player sales from Budget Buyers
-  segmentTech: number;        // player sales from Tech Enthusiasts
-  segmentBrand: number;       // player sales from Brand Loyalists
-  // Component milestone violations
+  segmentBudget: number;
+  segmentTech: number;
+  segmentBrand: number;
   batteryPenaltyApplied: boolean;
-  // Bot events this quarter
   botEventLabel: string | null;
-  // Summary
   summaryKey: string;
+  // v4.0
+  darkTacticsCaught: boolean;
+  darkTacticsLabel: string | null;
+  tradeBanApplied: boolean;
+  prDisasterApplied: boolean;
+  hypeFulfilled: boolean;
 }
 
 export interface MarketIntel {

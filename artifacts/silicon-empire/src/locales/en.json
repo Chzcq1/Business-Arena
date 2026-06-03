@@ -16,10 +16,49 @@
     "winTarget": "$1B WIN"
   },
   "ceo_selection": {
-    "title": "Select Your CEO Career",
-    "subtitle": "Your CEO background determines your market strategy and competitive advantages throughout the game",
-    "select": "Choose This Career",
-    "info": "Your CEO background impacts production costs, brand strength, R&D output, and inventory management. Selection is permanent for this game session."
+    "title": "Select Your CEO Class",
+    "subtitle": "Your class determines strategy, cost structure, and market advantages for all 16 quarters",
+    "select": "Start Game",
+    "info": "Selection is permanent. Each class creates a different optimal playstyle — choose your weapon."
+  },
+  "ceo_classes": {
+    "visionary": {
+      "title": "The Visionary",
+      "desc": "Bet the company on breakthrough R&D. Tech upgrades come cheap — but the factory floor costs more.",
+      "pro": "EcoTech upgrade costs −20%",
+      "con": "Production base cost +15%"
+    },
+    "marketer": {
+      "title": "Marketing Tycoon",
+      "desc": "You sell dreams, not hardware. Brand loyalty beats specs when you control the narrative.",
+      "pro": "Brand Loyalists segment +15%",
+      "con": "Tech upgrade costs +20%"
+    },
+    "operator": {
+      "title": "Supply Chain Master",
+      "desc": "Ruthless efficiency. Lean operations, minimal waste — but the street won't pay a premium for 'efficient'.",
+      "pro": "Production cost −15% · E-Waste −50%",
+      "con": "Max price ceiling reduced"
+    }
+  },
+  "bot_persona": {
+    "label": "Bot Persona",
+    "discount_king": "Discount King",
+    "tech_premium": "Tech Premium",
+    "copycat": "The Copycat",
+    "discount_king_hint": "Bot undercuts your price by ~15-25%",
+    "tech_premium_hint": "Bot invests in tech and charges premium",
+    "copycat_hint": "Bot mirrors your pricing moves"
+  },
+  "hype_campaign": {
+    "button": "Overhype Campaign",
+    "button_active": "HYPE LIVE",
+    "desc": "Demand +40% this quarter. Must upgrade tech before deadline or face PR Disaster.",
+    "cost": "−$5M",
+    "deadline": "Deliver by Q",
+    "fulfilled": "✓ Delivered",
+    "pr_disaster_warning": "⚠ PR DISASTER next quarter — demand −50%, −$10M fine",
+    "already_active": "Hype campaign already running"
   },
   "phases": {
     "intel": "Intel",
@@ -50,6 +89,7 @@
     "subtitle": "Choose your quarterly directive and review component milestones",
     "directiveLabel": "QUARTERLY DIRECTIVE",
     "directiveHint": "Choose one strategic focus for this quarter",
+    "darkTacticWarning": "⚠ DARK TACTIC — High risk, high reward. Failure has consequences.",
     "componentStatus": "COMPONENT STATUS",
     "milestoneWarning": "MILESTONE ALERT",
     "proceed": "Commit Directive & Continue",
@@ -58,7 +98,7 @@
   },
   "directives": {
     "aggressive_rd": "Aggressive R&D",
-    "aggressive_rd_desc": "Push hard on research. +2 EcoTech this quarter, but production costs +10%.",
+    "aggressive_rd_desc": "Push hard on research. +3 EcoTech this quarter, production costs +10%.",
     "austerity": "Austerity Drive",
     "austerity_desc": "Cut all non-essential spending. Fixed costs −15%, but team morale drops −5.",
     "market_expansion": "Market Expansion",
@@ -72,7 +112,21 @@
     "premium_focus": "Premium Focus",
     "premium_focus_desc": "Reposition as premium brand. Price ceiling +15% this quarter.",
     "volume_play": "Volume Strategy",
-    "volume_play_desc": "Flood the budget market. Budget demand +15%, Tech demand −5%."
+    "volume_play_desc": "Flood the budget market. Budget demand +15%, Tech demand −5%.",
+    "planned_obsolescence": "Planned Obsolescence",
+    "planned_obsolescence_desc": "⚠ DARK TACTIC: Demand +30% this quarter. 15% chance regulators catch you — lose 20% market share, −30 morale, −$10M fine.",
+    "industrial_espionage": "Industrial Espionage",
+    "industrial_espionage_desc": "⚠ DARK TACTIC: Steal bot's tech advantage this quarter (+2 Tech). 20% chance of trade ban — zero sales next quarter.",
+    "flash_sale": "Flash Sale Blitz",
+    "flash_sale_desc": "Slash prices for volume. Demand +25% but revenue per unit ×0.80. Burn stock fast.",
+    "viral_launch": "Viral Launch",
+    "viral_launch_desc": "Drop $8M on a media blitz. Brand +20, demand +10%. Go loud or go home.",
+    "headcount_freeze": "Headcount Freeze",
+    "headcount_freeze_desc": "Stop all hiring. Fixed costs −25% this quarter. Team morale takes a −10 hit.",
+    "supply_chain_deal": "Supply Chain Deal",
+    "supply_chain_deal_desc": "Lock in bulk component pricing. Unit cost −15% this quarter. No morale impact.",
+    "green_initiative": "Green Initiative",
+    "green_initiative_desc": "Go public with sustainability. +3 EcoTech earned. Battery auto-upgraded to L2 if below."
   },
   "components": {
     "title": "Component Tech Lab",
@@ -142,7 +196,15 @@
     "sec": "SEC",
     "minPrice": "Min $299",
     "diminishingWarning": "⚠ Bottleneck active — rising unit cost",
-    "elasticityWarning": "⚠ Price above tech ceiling — demand collapsing!"
+    "elasticityWarning": "⚠ Price above tech ceiling — demand collapsing!",
+    "tradeBanWarning": "⚠ TRADE BAN ACTIVE — You cannot sell this quarter!",
+    "hypeTactics": "SPECIAL TACTICS",
+    "hypeButton": "Overhype Campaign",
+    "hypeDesc": "Demand +40% · Must upgrade tech within 2Q or PR Disaster",
+    "hypeCost": "−$5M",
+    "hypeActive": "HYPE LIVE",
+    "hypeDeadline": "Deliver by Q",
+    "hypeInsufficientFunds": "Need $5M to launch"
   },
   "resolution_phase": {
     "title": "Quarter Resolution",
@@ -179,7 +241,10 @@
     "segTech": "Tech Enthusiasts",
     "segBrand": "Brand Loyalists",
     "batteryPenalty": "Battery Milestone Penalty (−20% revenue)",
-    "botEventLabel": "BOT EVENT"
+    "botEventLabel": "BOT EVENT",
+    "darkTacticsAlert": "DARK TACTICS RESULT",
+    "tradeBanAlert": "TRADE BAN ACTIVE — Zero sales this quarter",
+    "prDisasterAlert": "PR DISASTER — Demand halved, −$10M fine"
   },
   "upgrades": {
     "title": "Corporate Command",
@@ -323,6 +388,10 @@
     "default": "Quarter resolved. Study the numbers and adapt.",
     "antitrust": "ANTITRUST: Fined 15% capital for market dominance!",
     "battery_penalty": "Battery milestone missed — revenue penalized 20%.",
-    "bot_event": "Bot was affected by a market event."
+    "bot_event": "Bot was affected by a market event.",
+    "planned_obs_caught": "BUSTED: Planned Obsolescence exposed — market share collapsed and regulators fined you.",
+    "espionage_banned": "TRADE BAN: Corporate espionage caught — you cannot sell next quarter.",
+    "hype_fulfilled": "Hype delivered! Customers rewarded your promise. Credibility intact.",
+    "hype_disaster": "PR DISASTER: You overpromised and underdelivered. Demand collapsed next quarter."
   }
 }

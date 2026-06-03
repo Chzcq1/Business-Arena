@@ -1,0 +1,34 @@
+Act as a Lead Game Designer and Senior Full-Stack Developer. We need to overhaul the "Silicon Empire" MVP to eliminate the "Perfect Information" problem and add deep strategic layers, replayability, and polished UI/UX (Audio & Animations). Implement these 6 major systems into the Next.js/Zustand architecture:
+
+**1. CEO Origins (Pre-Game Class Selection):**
+- Before the game starts, introduce a `ClassSelectionScreen`. The player must choose one of 4 CEO Backgrounds:
+  - **The Engineer:** Starts with +2 Tech Level. Tech upgrades cost 15% less.
+  - **The Wolf of Wall Street:** Starts with +$50M Capital. Bank loans have 20% less interest.
+  - **The Marketing Guru:** Ignores the first 10% of "Brand Perception" debuffs.
+  - **The Supply Chain Master:** Immune to E-Waste penalties for the first 20K unsold units.
+
+**2. Fog of War & Predictive Uncertainty (Action Phase UI):**
+- Stop showing exact numbers for the Bot and Future Profits.
+- **Estimated Revenue:** The UI should only show an "Estimated Profit/Loss" with a ±15% variance range (e.g., "Estimated: $150K - $180K"). 
+- **Intel Points Rework:** Using Intel no longer shows the exact Bot price. It shows a likely range (e.g., "Bot Price: $700 - $850") and a general strategy hint (e.g., "Bot is heavily focusing on R&D").
+
+**3. Quarterly Board Meeting Phase (New Game Loop Step):**
+- Add a new phase *before* the 60-second Action Phase called the `Board Meeting Phase` (No timer).
+- The player must choose 1 of 3 "Quarterly Directives" (e.g., "Aggressive R&D: +20% Tech boost but +10% Production cost", "Austerity: -15% fixed costs but Morale drops", "Market Expansion: +10% max market share cap"). This forces strategic adaptation.
+
+**4. Seasonal Dilemmas (Event Overhaul):**
+- Events must now be tied to the Quarter (Q1, Q2, Q3, Q4) to simulate seasonality (e.g., Q4 is Holiday Rush, Q3 has Monsoon logistics issues).
+- Every event MUST be a "Dilemma" requiring a tough choice with trade-offs. (e.g., "Defective Batch Discovered: Choose A) Recall and lose $40M but gain Brand Trust, or Choose B) Cover it up, save money, but risk a 30% chance of massive Market Share collapse next turn"). No "Do nothing" options unless it has severe consequences.
+
+**5. Product Line Branching (Advanced Action Phase):**
+- In the Action Phase, the Production slider is no longer just one product. 
+- Introduce a "Product Mix" toggle/slider: The player decides the ratio of production budget spent on "Flagship Phones" (High Margin, Requires High Tech) vs. "Budget Phones" (Low Margin, High Volume). The Market Share calculation must evaluate these lines separately against the Bot.
+
+**6. Juiciness: Audio Hooks & Framer Motion Animations:**
+- **Animations:** Integrate `framer-motion`. Add slide-in transitions for modals, pulsing effects for warnings (red text when price is too high), and a number-counting animation for the Capital changing during the Resolution Phase.
+- **Audio System:** Create an `AudioContext` or use HTML5 Audio hooks (`useAudio`). Add placeholder logic for `playClick()`, `playHover()`, `playWarning()`, and `playCashRegister()` (triggering during resolution). 
+
+**7. Smarter Bot AI:**
+- The Bot must now utilize the new Product Line Branching and Quarterly Directives. Program the bot to adapt: if the Player is dominating the Flagship market, the Bot should pivot its budget to dominate the Budget Phone market.
+
+Update the `locales/th.json` with the new Thai text for these features. Ensure the Dashboard UI scales gracefully to accommodate the new Board Meeting screen and Product Mix sliders.

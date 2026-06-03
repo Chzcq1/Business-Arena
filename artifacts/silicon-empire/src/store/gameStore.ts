@@ -19,7 +19,7 @@ import type {
 
 const QUARTER_DURATION = 60;
 const MAX_QUARTERS = 16;
-const INSTANT_WIN_CAPITAL = 1_000_000_000;
+const INSTANT_WIN_CAPITAL = 50_000_000;
 
 const EVENTS: QuarterEvent[] = [
   {
@@ -72,6 +72,90 @@ const EVENTS: QuarterEvent[] = [
       { id: "culture", effect: { morale: 15, capital: -300000 }, en: { label: "Invest in Culture & Equity", description: "Long-term retention strategy" }, th: { label: "ลงทุนในวัฒนธรรมองค์กร", description: "กลยุทธ์ retention ระยะยาว" } },
     ],
   },
+  {
+    id: "ai_revolution", 
+    type: "tech",
+    en: { 
+      title: "The AI Smartphone Revolution", 
+      description: "Generative AI is the new trend! Investors demand an AI-powered flagship phone immediately." 
+    },
+    th: { 
+      title: "การปฏิวัติสมาร์ทโฟน AI", 
+      description: "Generative AI กำลังเป็นกระแสหลัก! นักลงทุนเรียกร้องให้เปิดตัวมือถือเรือธงที่ขับเคลื่อนด้วย AI ทันที" 
+    },
+    choices: [
+      { 
+        id: "inhouse_ai", 
+        effect: { capital: -4000000, techLevel: 3, morale: 10 }, 
+        en: { label: "Develop In-House AI (−$4M)", description: "Massive cost, but secures long-term tech dominance." }, 
+        th: { label: "พัฒนา AI ของตัวเอง (−$4M)", description: "ต้นทุนมหาศาล แต่ครองความยิ่งใหญ่ทางเทคโนโลยีระยะยาว" } 
+      },
+      { 
+        id: "license_ai", 
+        effect: { capital: -1000000, techLevel: 1 }, 
+        en: { label: "License 3rd-Party AI (−$1M)", description: "Quick and cheap, but less innovative." }, 
+        th: { label: "ซื้อลิขสิทธิ์ AI สำเร็จรูป (−$1M)", description: "รวดเร็วและราคาถูก แต่ขาดนวัตกรรมที่โดดเด่น" } 
+      },
+      { 
+        id: "ignore_ai", 
+        effect: { techLevel: -1, morale: -15 }, 
+        en: { label: "Ignore the Trend", description: "Save money, but staff feel the company is falling behind." }, 
+        th: { label: "เพิกเฉยต่อกระแส", description: "ประหยัดเงิน แต่พนักงานรู้สึกว่าบริษัทกำลังล้าหลัง" } 
+      }
+    ],
+  },
+  {
+    id: "spy_caught", 
+    type: "market",
+    en: { 
+      title: "Corporate Spy Compromised!", 
+      description: "One of your data analysts was caught trying to hack a competitor. The press is calling." 
+    },
+    th: { 
+      title: "สายลับองค์กรถูกจับได้!", 
+      description: "นักวิเคราะห์ข้อมูลของคุณคนหนึ่งถูกจับได้ว่าพยายามแฮกข้อมูลคู่แข่ง นักข่าวเตรียมแฉเรื่องนี้แล้ว" 
+    },
+    choices: [
+      { 
+        id: "pay_hush", 
+        effect: { capital: -2500000, morale: 5 }, 
+        en: { label: "Pay Hush Money (−$2.5M)", description: "Bury the story using expensive lawyers." }, 
+        th: { label: "จ่ายค่าปิดปากสื่อ (−$2.5M)", description: "ฝังข่าวนี้ทิ้งด้วยทนายความราคาแพง" } 
+      },
+      { 
+        id: "scapegoat", 
+        effect: { capital: 0, morale: -25 }, 
+        en: { label: "Scapegoat the Analyst", description: "Save capital, but destroy company morale and trust." }, 
+        th: { label: "โยนความผิดให้พนักงาน", description: "รักษางบประมาณไว้ แต่ทำลายความเชื่อมั่นและกำลังใจขั้นสุด" } 
+      }
+    ],
+  },
+  {
+    id: "grey_market", 
+    type: "supply",
+    en: { 
+      title: "The Grey Market Offer", 
+      description: "A shady supplier offers a massive batch of unverified components at a dirt-cheap price." 
+    },
+    th: { 
+      title: "ข้อเสนอจากตลาดมืด", 
+      description: "ซัพพลายเออร์ลึกลับเสนอขายชิ้นส่วนจำนวนมหาศาลที่ไม่ได้ตรวจสอบคุณภาพ ในราคาถูกแสนถูก" 
+    },
+    choices: [
+      { 
+        id: "accept_shady", 
+        effect: { capital: 1500000, techLevel: -1, morale: -10 }, 
+        en: { label: "Accept Offer (+$1.5M)", description: "Pocket the savings, but risk quality issues." }, 
+        th: { label: "รับข้อเสนอ (+$1.5M)", description: "เก็บเงินส่วนต่างเข้ากระเป๋า แต่ยอมลดคุณภาพสินค้า" } 
+      },
+      { 
+        id: "report_shady", 
+        effect: { capital: -200000, morale: 5, intelBonus: 2 }, 
+        en: { label: "Report to Authorities (−$200K)", description: "Small cost to assist police, rewards you with Intel Points." }, 
+        th: { label: "แจ้งเบาะแสให้ทางการ (−$200K)", description: "มีค่าดำเนินการเล็กน้อย แต่ได้แต้มข่าวกรองเป็นรางวัล" } 
+      }
+    ],
+  }
 ];
 
 function pickRandom<T>(arr: T[]): T {
@@ -126,86 +210,94 @@ function generateBotSchedule(botState: BotState, quarter: number): BotScheduledA
   return actions.sort((a, b) => a.triggerAtSecond - b.triggerAtSecond);
 }
 
-function resolveQuarter(
-  player: PlayerMetrics,
-  draft: PlayerDraft,
-  bot: BotState,
-  executives: Executives,
-  upgrades: Upgrades,
-  loans: LoanState,
-  sabotage: SabotageState,
-): ResolutionResult {
-  const BASE_UNIT_COST = 200;
-  const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
-  const baseUnitCost = BASE_UNIT_COST * factoryDiscount;
+  function resolveQuarter(
+    player: PlayerMetrics,
+    draft: PlayerDraft,
+    bot: BotState,
+    executives: Executives,
+    upgrades: Upgrades,
+    loans: LoanState,
+    sabotage: SabotageState,
+  ): ResolutionResult {
+    const BASE_UNIT_COST = 200;
+    const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
+    const baseUnitCost = BASE_UNIT_COST * factoryDiscount;
 
-  let unitCostMultiplier = 1.0;
-  if (draft.productionBudget > 100_000) {
-    const excessRatio = (draft.productionBudget - 100_000) / 100_000;
-    unitCostMultiplier = 1 + Math.pow(excessRatio, 1.5) * 0.6;
-    if (executives.coo) unitCostMultiplier = Math.min(unitCostMultiplier, 1.35);
-  }
-  const effectiveUnitCost = baseUnitCost * unitCostMultiplier;
+    let unitCostMultiplier = 1.0;
+    if (draft.productionBudget > 500_000) { 
+        const excessRatio = (draft.productionBudget - 500_000) / 500_000;
+        unitCostMultiplier = 1 + Math.pow(excessRatio, 1.2) * 0.3; 
+        if (executives.coo) unitCostMultiplier = Math.min(unitCostMultiplier, 1.20);
+    }
 
-  const playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
+    const effectiveUnitCost = baseUnitCost * unitCostMultiplier;
 
-  const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
-  const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
-  const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.7) : botCapacityRaw;
+    const playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
 
-  const maxViablePrice = player.techLevel * 200;
-  let demandFactor = 1.0;
-  if (draft.price > maxViablePrice) {
-    demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
-  }
+    const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
+    const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
+    const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.7) : botCapacityRaw;
 
-  const priceDiff = bot.price - draft.price;
-  const priceAdvantage = clamp(priceDiff / 200, -0.45, 0.45);
-  const techBonus = (player.techLevel - 3) * 0.05;
-  const moraleBonus = (player.morale - 50) * 0.002;
-  const playerShareFactor = clamp(0.5 + priceAdvantage + techBonus + moraleBonus, 0.05, 0.95);
+    const baseMarket = 1_000_000; 
+    const maxViablePrice = 500 + (player.techLevel * 300); 
+    const techMultiplier = Math.pow(1.5, player.techLevel - 1); 
+    const TOTAL_MARKET = Math.floor(baseMarket * techMultiplier);
 
-  const TOTAL_MARKET = 800_000;
-  const playerRawDemand = Math.floor(TOTAL_MARKET * playerShareFactor * demandFactor);
-  const botShareFactor = sabotage.prPending ? (1 - playerShareFactor) * 0.93 : (1 - playerShareFactor);
-  const botRawDemand = Math.floor(TOTAL_MARKET * botShareFactor);
+    let demandFactor = 1.0;
+    if (draft.price > maxViablePrice) {
+      demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
+    }
 
-  const playerSales = Math.min(playerCapacity, playerRawDemand);
-  const botSales = Math.min(botCapacity, botRawDemand);
+    const priceDiff = bot.price - draft.price;
+    const priceAdvantage = clamp(priceDiff / 200, -0.45, 0.45);
+    const techBonus = (player.techLevel - 3) * 0.05;
+    const moraleBonus = (player.morale - 50) * 0.002;
+    const playerShareFactor = clamp(0.5 + priceAdvantage + techBonus + moraleBonus, 0.05, 0.95);
 
-  const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
-  const eWasteRate = executives.cfo ? 0.7 : 1.0;
-  const eWastePenalty = Math.floor(playerUnsold / 100_000) * 5_000_000 * eWasteRate;
+    const playerRawDemand = Math.floor(TOTAL_MARKET * playerShareFactor * demandFactor);
+    const botShareFactor = sabotage.prPending ? (1 - playerShareFactor) * 0.93 : (1 - playerShareFactor);
+    const botRawDemand = Math.floor(TOTAL_MARKET * botShareFactor);
 
-  const playerRevenue = playerSales * draft.price;
-  const playerVariableCost = playerSales * effectiveUnitCost;
-  const playerFixedCost = draft.productionBudget * 0.2;
-  const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
-  const playerProfit = grossProfit - eWastePenalty;
+    const playerSales = Math.min(playerCapacity, playerRawDemand);
+    const botSales = Math.min(botCapacity, botRawDemand);
 
-  const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
-  const capitalChange = playerProfit - debtRepayment;
+    const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
+    const eWasteRate = executives.cfo ? 0.7 : 1.0;
+    const eWastePenalty = Math.floor(playerUnsold / 100_000) * 5_000_000 * eWasteRate;
 
-  const botRevenue = botSales * bot.price;
-  const botCost = botSales * botBaseCost + bot.productionBudget * 0.2;
-  const botProfit = botRevenue - botCost;
+    // ---------------------------------------------------------
+    // ส่วนที่แก้ใหม่: คิดต้นทุนตามจำนวนที่ผลิตจริง (Capacity) ไม่ใช่ยอดขาย (Sales)
+    // ---------------------------------------------------------
+    const playerRevenue = playerSales * draft.price;
+    const playerVariableCost = playerCapacity * effectiveUnitCost; // <-- แก้ตรงนี้แล้ว
+    const playerFixedCost = draft.productionBudget * 0.2;
+    const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
+    const playerProfit = grossProfit - eWastePenalty;
 
-  const totalSales = playerSales + botSales;
-  const newPlayerShare = totalSales > 0 ? (playerSales / totalSales) * 100 : player.marketShare;
-  const newBotShare = 100 - newPlayerShare;
+    const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
+    const capitalChange = playerProfit - debtRepayment;
 
-  const moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
-  const techGrowth = upgrades.legendaryEngineer ? 2 : 0;
+    const botRevenue = botSales * bot.price;
+    const botCost = (botCapacity * botBaseCost) + (bot.productionBudget * 0.2); // <-- แก้ตรงนี้แล้ว
+    const botProfit = botRevenue - botCost;
+    // ---------------------------------------------------------
 
-  let summaryKey = "summaries.default";
-  if (demandFactor < 0.3) summaryKey = "summaries.elasticity";
-  else if (eWastePenalty > 2_000_000) summaryKey = "summaries.ewaste";
-  else if (playerSales > botSales * 1.3) summaryKey = "summaries.dominant";
-  else if (playerSales < botSales * 0.7) summaryKey = "summaries.rough";
-  else if (debtRepayment > 0) summaryKey = "summaries.debt";
-  else if (capitalChange < 0) summaryKey = "summaries.burning";
-  else if (playerSales > botSales && capitalChange > 500_000) summaryKey = "summaries.strong";
-  else summaryKey = "summaries.neckAndNeck";
+    const totalSales = playerSales + botSales;
+    const newPlayerShare = totalSales > 0 ? (playerSales / totalSales) * 100 : player.marketShare;
+    const newBotShare = 100 - newPlayerShare;
+
+    const moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
+    const techGrowth = upgrades.legendaryEngineer ? 2 : 0;
+
+    let summaryKey = "summaries.default";
+    if (demandFactor < 0.3) summaryKey = "summaries.elasticity";
+    else if (eWastePenalty > 2_000_000) summaryKey = "summaries.ewaste";
+    else if (playerSales > botSales * 1.3) summaryKey = "summaries.dominant";
+    else if (playerSales < botSales * 0.7) summaryKey = "summaries.rough";
+    else if (debtRepayment > 0) summaryKey = "summaries.debt";
+    else if (capitalChange < 0) summaryKey = "summaries.burning";
+    else if (playerSales > botSales && capitalChange > 500_000) summaryKey = "summaries.strong";
+    else summaryKey = "summaries.neckAndNeck";
 
   return {
     playerSalesUnits: playerSales,
@@ -539,17 +631,23 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   takeOutLoan: () => {
     const { player, loans, executives, phase } = get();
+    // ห้ามกู้เงินตอนที่เวลากำลังเดินอยู่ (ต้องกู้ตอนช่วงสรุปผลหรือเตรียมความพร้อม)
     if (phase === "action") return;
-    const repayment = executives.cfo ? 25_000_000 : 30_000_000;
+
+    // ยอดผ่อนต่อไตรมาส: มี CFO จ่าย 2.5 ล้าน / ไม่มี CFO จ่าย 3 ล้าน
+    const repayment = executives.cfo ? 2_500_000 : 3_000_000;
+
     set({
-      player: { ...player, capital: player.capital + 100_000_000 },
+      player: { ...player, capital: player.capital + 10_000_000 },
       loans: {
-        outstanding: loans.outstanding + 100_000_000,
+        outstanding: loans.outstanding + 10_000_000, // หนี้ตั้งต้นเพิ่ม 10 ล้าน
         quartersRemaining: loans.quartersRemaining + 4,
-        repaymentPerQuarter: repayment,
+        // สำคัญ: บวกทบยอดผ่อนเดิมเข้าไปด้วย เผื่อผู้เล่นกดกู้ซ้อนกันหลายรอบ
+        repaymentPerQuarter: loans.repaymentPerQuarter + repayment, 
       },
     });
   },
+
 
   acceptBiddingWar: () => {
     const { player, upgrades } = get();

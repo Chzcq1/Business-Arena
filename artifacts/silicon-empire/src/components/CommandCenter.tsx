@@ -119,7 +119,8 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{t("upgrades.executivesHint")}</p>
               <UpgradeCard
                 icon={<Award className="w-4 h-4 text-emerald-400" />}
-                title={t("upgrades.cfoTitle")} description={t("upgrades.cfoDesc")}
+                title={t("upgrades.cfoTitle")}
+                description={`${t("upgrades.cfoDesc")} Costs $5M/quarter salary. E-Waste reduction capped at 15%.`}
                 cost={40_000_000} costLabel={t("upgrades.cfoCost")}
                 done={executives.cfo}
                 disabled={isActionPhase || player.capital < 40_000_000 || executives.cfo}
@@ -128,13 +129,19 @@ export function CommandCenter({ onClose }: { onClose: () => void }) {
               />
               <UpgradeCard
                 icon={<Wrench className="w-4 h-4 text-blue-400" />}
-                title={t("upgrades.cooTitle")} description={t("upgrades.cooDesc")}
+                title={t("upgrades.cooTitle")}
+                description={`${t("upgrades.cooDesc")} Costs $3M/quarter salary.`}
                 cost={40_000_000} costLabel={t("upgrades.cooCost")}
                 done={executives.coo}
                 disabled={isActionPhase || player.capital < 40_000_000 || executives.coo}
                 disabledReason={player.capital < 40_000_000 && !executives.coo ? t("upgrades.insufficientCapital") : notAvailableLabel}
                 onAction={() => hireExecutive("coo")} actionLabel={t("upgrades.hire")}
               />
+              {(executives.cfo || executives.coo) && (
+                <div className="px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs text-yellow-400">
+                  💰 Total staff salary: ${((executives.cfo ? 5 : 0) + (executives.coo ? 3 : 0))}M/quarter (auto-deducted at resolution)
+                </div>
+              )}
             </>
           )}
 

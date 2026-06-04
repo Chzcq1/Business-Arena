@@ -112,7 +112,11 @@ function generateBotSchedule(
   return actions.sort((a, b) => a.triggerAtSecond - b.triggerAtSecond);
 }
 
-// ===== RESOLUTION ENGINE v5.0 =====
+// ===== v6.0 CONSTANTS =====
+const CFO_SALARY_PER_QUARTER = 5_000_000;
+const COO_SALARY_PER_QUARTER = 3_000_000;
+
+// ===== RESOLUTION ENGINE v6.0 =====
 function resolveQuarter(
   player: PlayerMetrics,
   draft: PlayerDraft,
@@ -215,17 +219,26 @@ function resolveQuarter(
     BRAND_SEG  * (1 - brandShare) * botBrandMod
   );
 
-  const playerSales = Math.min(playerCapacity, playerRawDemand);
+  const playerSales = Math.min(playerCapacity, finalPlayerRawDemand);
   const botSales    = Math.min(botCapacity, botRawDemand);
 
-  const demandTotal = Math.max(playerRawDemand, 1);
+  const demandTotal = Math.max(finalPlayerRawDemand, 1);
   const segBudget = Math.floor(playerSales * (playerBudgetDemand / demandTotal));
   const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
   const segBrand  = Math.max(0, playerSales - segBudget - segTech);
 
-  const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
-  const cfoEWaste = executives.cfo ? 0.70 : 1.0;
-  const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 1.5 * ceoBackground.eWastePenaltyReduction * cfoEWaste);
+  // v6.0: Hard Price Cap — if player price > 25% above bot, demand collapses to 10%
+  const priceRatio = bot.price > 0 ? draft.price / bot.price : 1;
+  const hardPricePenaltyApplied = !tradeBanActive && priceRatio > 1.25;
+  const brandBurnApplied = !tradeBanActive && priceRatio > 1.30;
+  const finalPlayerRawDemand = hardPricePenaltyApplied
+    ? Math.floor(playerRawDemand * 0.10)
+    : playerRawDemand;
+
+  const playerUnsold = Math.max(0, playerCapacity - finalPlayerRawDemand);
+  // v6.0: CFO nerf — cap E-Waste reduction to 15% (was 30%). 2× fine multiplier (was 1.5×)
+  const cfoEWaste = executives.cfo ? 0.85 : 1.0;
+  const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 3.0 * ceoBackground.eWastePenaltyReduction * cfoEWaste);
 
   const playerRevenue = Math.floor(playerSales * draft.price * revenueMultiplier);
   const playerVariableCost = playerSales * effectiveUnitCost;
@@ -240,7 +253,9 @@ function resolveQuarter(
     : boardDirective === "viral_launch"     ? 8_000_000 : 0;
 
   const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
-  const capitalChange = playerProfit - debtRepayment - directiveCost;
+  // v6.0: Staff salaries deducted every quarter
+  const staffSalaryDeducted = (executives.cfo ? CFO_SALARY_PER_QUARTER : 0) + (executives.coo ? COO_SALARY_PER_QUARTER : 0);
+  const capitalChange = playerProfit - debtRepayment - directiveCost - staffSalaryDeducted;
 
   const botRevenue = botSales * bot.price;
   const botCost    = botSales * botBaseCost + bot.productionBudget * 0.2;
@@ -257,6 +272,8 @@ function resolveQuarter(
   if (boardDirective === "cost_cutting")   brandChange -= 5;
   if (boardDirective === "viral_launch")   brandChange += 20;
   if (components.battery >= 3) brandChange += 3;
+  // v6.0: Brand Burn — price gouging destroys brand trust
+  if (brandBurnApplied) brandChange -= 30;
 
   let moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
   if (boardDirective === "austerity")        moraleChange -= 5;
@@ -289,9 +306,10 @@ function resolveQuarter(
     newBotMarketShare: clamp(100 - newPlayerShare, 3, 97),
     capitalChange, moraleChange, brandChange, ecotechEarned,
     eWastePenalty, eWasteUnits: playerUnsold, debtRepayment, techGrowth,
-    effectiveUnitCost, playerCapacity, playerRawDemand, demandFactor,
+    effectiveUnitCost, playerCapacity, playerRawDemand: finalPlayerRawDemand, demandFactor,
     segmentBudget: segBudget, segmentTech: segTech, segmentBrand: segBrand,
     batteryPenaltyApplied, summaryKey,
+    staffSalaryDeducted, hardPricePenaltyApplied, brandBurnApplied,
   };
 }
 
@@ -865,6 +883,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hypeFulfilled,
     };
 
+    // v6.0: Bankruptcy check AFTER all deductions (e-waste fines + salaries + debt)
     let gameResult: GameResult = "playing";
     if (newPlayer.capital <= 0)                     gameResult = "bankrupt";
     else if (newPlayer.capital >= INSTANT_WIN_CAPITAL) gameResult = "won_instant";

@@ -206,6 +206,10 @@ export interface ResolutionResult {
   tradeBanApplied: boolean;
   prDisasterApplied: boolean;
   hypeFulfilled: boolean;
+  // v6.0
+  staffSalaryDeducted: number;
+  hardPricePenaltyApplied: boolean;
+  brandBurnApplied: boolean;
 }
 
 // v5.0: Active effects from equipped Action Cards (accumulated this quarter)

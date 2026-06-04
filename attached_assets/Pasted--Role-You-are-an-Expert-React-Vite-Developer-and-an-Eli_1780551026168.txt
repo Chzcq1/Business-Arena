@@ -1,0 +1,20 @@
+**Role:** You are an Expert React/Vite Developer and an Elite Board Game Designer. Your task is to upgrade the game "Silicon Empire" to Version 5.0 and completely refactor the codebase for extreme moddability.
+> **Core Objective:** Transform the current math-heavy 60-second gameplay into a highly addictive "Dynamic Warfare" experience, while extracting all hardcoded data into easily editable config files.
+> Please execute the following 4 phases strictly:
+> **Phase 1: Ultimate Data Extraction & Moddability (Crucial)**
+>  * Create a new directory: src/game-data/
+>  * Extract ALL hardcoded game data into separate files: eventsData.ts, directivesData.ts, ceoClasses.ts, botPersonas.ts, and actionCards.ts.
+>  * **MANDATORY:** In every single file inside src/game-data/, you MUST write detailed comments in **THAI** explaining exactly how a non-programmer can add new items. Provide copy-pasteable templates.
+>  * *Example Thai Comment:* // วิธีเพิ่ม Event ใหม่: ให้คัดลอก Object ด้านล่างนี้ไปต่อท้าย Array เปลี่ยน 'id' ให้ไม่ซ้ำ และแก้ข้อความใน 'title', 'description' และปรับตัวเลขใน 'effects'
+> **Phase 2: "Secret Tactics" (Pre-Action Phase)**
+>  * Modify the Board Meeting Phase. After selecting a Directive, add a new step: **"Black Market"**.
+>  * Players and the Bot can spend their Capital to buy/equip up to 2 "Action Cards" (e.g., Ransomware, PR Smear, Supply Chain Sabotage, Cyber Shield).
+>  * Use the data from actionCards.ts to render this shop.
+> **Phase 3: The 60-Second Dynamic Warfare (Action Phase Revamp)**
+>  * **Active Skills:** Display the equipped Action Cards during the 60-second phase. Players can click them to instantly attack the Bot (e.g., freeze Bot's production for 5s, steal 10% market share). Add Cooldowns to prevent spamming.
+>  * **Time-Freeze Mini-Events:** Implement a system where random critical events (from eventsData.ts) can pop up mid-phase (e.g., "Star Engineer Poaching!").
+>  * *Mechanic:* When a Time-Freeze Event triggers, the 60-second timer **PAUSES**, the background blurs, and the player is forced to make a quick decision (e.g., "Pay $5M to match salary" or "Let them go and lose Tech Level"). Once decided, the timer resumes.
+> **Phase 4: Game Feel & UI Polish**
+>  * Ensure the React UI handles these state changes gracefully without crashing.
+>  * Add visual feedback: Red flashing borders for incoming attacks, bold floating numbers when Market Share changes, and a highly visible "PAUSED" state during Time-Freeze events.
+>  * Do NOT break the existing logic (EcoTech, Phase Tracker, E-Waste). Ensure everything integrates seamlessly into the V4.0 foundation.

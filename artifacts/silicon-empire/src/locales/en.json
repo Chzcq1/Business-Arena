@@ -63,9 +63,41 @@
   "phases": {
     "intel": "Intel",
     "boardmeeting": "Board",
+    "blackmarket": "Black Market",
     "event": "Event",
     "action": "Action",
     "resolution": "Resolution"
+  },
+  "black_market": {
+    "title": "Black Market",
+    "subtitle": "Spend capital to equip tactical cards. Activate them during the 60-second phase.",
+    "phaseLabel": "BLACK MARKET",
+    "shopLabel": "AVAILABLE CARDS",
+    "equippedLabel": "EQUIPPED (max 2)",
+    "equip": "Equip",
+    "equipped": "✓ Equipped",
+    "maxReached": "Slots Full",
+    "skip": "Skip",
+    "proceed": "→ Continue to Event",
+    "insufficientFunds": "Need",
+    "slotEmpty": "Empty Slot",
+    "slotHint": "Equip a card to use it during Action Phase",
+    "rarityCommon": "COMMON",
+    "rarityRare": "RARE",
+    "rarityLegendary": "LEGENDARY",
+    "activeCardsLabel": "TACTICAL ARSENAL",
+    "useCard": "USE",
+    "cardUsed": "USED",
+    "botFrozen": "BOT FROZEN",
+    "insiderReveal": "INSIDER ACTIVE"
+  },
+  "time_freeze": {
+    "paused": "⏸ TIMER PAUSED",
+    "pausedSub": "Critical situation demands immediate decision",
+    "choose": "Decide now — timer resumes after your choice",
+    "urgencyHigh": "HIGH URGENCY",
+    "urgencyMedium": "MEDIUM URGENCY",
+    "urgencyLow": "LOW URGENCY"
   },
   "intel_phase": {
     "title": "Intelligence Briefing",

@@ -63,9 +63,41 @@
   "phases": {
     "intel": "ข่าวกรอง",
     "boardmeeting": "ประชุมบอร์ด",
+    "blackmarket": "ตลาดมืด",
     "event": "เหตุการณ์",
     "action": "ดำเนินการ",
     "resolution": "สรุปผล"
+  },
+  "black_market": {
+    "title": "ตลาดมืด",
+    "subtitle": "ใช้ทุนซื้อไพ่ยุทธวิธี แล้วกดใช้ระหว่าง 60 วินาที Action Phase",
+    "phaseLabel": "ตลาดมืด",
+    "shopLabel": "ไพ่ที่มีขาย",
+    "equippedLabel": "ไพ่ที่ติดตั้ง (สูงสุด 2)",
+    "equip": "เลือก",
+    "equipped": "✓ ติดตั้งแล้ว",
+    "maxReached": "เต็มแล้ว",
+    "skip": "ข้ามไป",
+    "proceed": "→ ดำเนินการต่อ",
+    "insufficientFunds": "ต้องการ",
+    "slotEmpty": "ช่องว่าง",
+    "slotHint": "เลือกไพ่เพื่อใช้ใน Action Phase",
+    "rarityCommon": "ธรรมดา",
+    "rarityRare": "หายาก",
+    "rarityLegendary": "ตำนาน",
+    "activeCardsLabel": "คลังอาวุธ",
+    "useCard": "ใช้",
+    "cardUsed": "ใช้แล้ว",
+    "botFrozen": "BOT หยุดทำงาน",
+    "insiderReveal": "สายลับเปิดเผยข้อมูล"
+  },
+  "time_freeze": {
+    "paused": "⏸ หยุดนาฬิกา",
+    "pausedSub": "เหตุการณ์วิกฤตต้องการการตัดสินใจทันที",
+    "choose": "ตัดสินใจตอนนี้ — นาฬิกาจะเดินต่อเมื่อคุณเลือก",
+    "urgencyHigh": "ด่วนสูงสุด",
+    "urgencyMedium": "ด่วนปานกลาง",
+    "urgencyLow": "ด่วนน้อย"
   },
   "intel_phase": {
     "title": "รายงานข่าวกรอง",

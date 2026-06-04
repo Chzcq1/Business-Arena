@@ -1,4 +1,4 @@
-// ===== GAME PAGE v4 =====
+// ===== GAME PAGE v5.0 =====
 import { useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
@@ -6,6 +6,7 @@ import { MetricsHeader } from "@/components/MetricsHeader";
 import { CEOSelectionPhase } from "@/components/CEOSelectionPhase";
 import { IntelPhase } from "@/components/IntelPhase";
 import { BoardMeetingPhase } from "@/components/BoardMeetingPhase";
+import { BlackMarketPhase } from "@/components/BlackMarketPhase";
 import { EventPhase } from "@/components/EventPhase";
 import { ActionPhase } from "@/components/ActionPhase";
 import { ResolutionPhase } from "@/components/ResolutionPhase";
@@ -13,9 +14,10 @@ import { GameOver } from "@/components/GameOver";
 import { CommandCenter } from "@/components/CommandCenter";
 import { Building2, Lock } from "lucide-react";
 
+// v5.0: Persona badge data sourced from botPersonas.ts values
 const PERSONA_BADGES: Record<string, { label: string; color: string; icon: string }> = {
-  discount_king: { label: "Discount King", color: "text-red-400 border-red-400/40 bg-red-900/20",  icon: "🔻" },
-  tech_premium:  { label: "Tech Premium",  color: "text-blue-400 border-blue-400/40 bg-blue-900/20", icon: "🔬" },
+  discount_king: { label: "Discount King", color: "text-red-400 border-red-400/40 bg-red-900/20",     icon: "🔻" },
+  tech_premium:  { label: "Tech Premium",  color: "text-blue-400 border-blue-400/40 bg-blue-900/20",  icon: "🔬" },
   copycat:       { label: "The Copycat",   color: "text-yellow-400 border-yellow-400/40 bg-yellow-900/20", icon: "🐱" },
 };
 
@@ -24,11 +26,12 @@ function PhaseTicker() {
   const { t } = useT();
 
   const labels = [
-    { key: "intel", label: t("phases.intel") },
-    { key: "boardmeeting", label: t("phases.boardmeeting") },
-    { key: "event", label: t("phases.event") },
-    { key: "action", label: t("phases.action") },
-    { key: "resolution", label: t("phases.resolution") },
+    { key: "intel",       label: t("phases.intel") },
+    { key: "boardmeeting",label: t("phases.boardmeeting") },
+    { key: "blackmarket", label: t("phases.blackmarket") },
+    { key: "event",       label: t("phases.event") },
+    { key: "action",      label: t("phases.action") },
+    { key: "resolution",  label: t("phases.resolution") },
   ];
   const phaseIndex = labels.findIndex((l) => l.key === phase);
   const persona = botPersona ? PERSONA_BADGES[botPersona] : null;
@@ -40,6 +43,8 @@ function PhaseTicker() {
           <div key={p.key} className="flex items-center gap-1">
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-semibold transition-all whitespace-nowrap ${
               p.key === phase ? "bg-primary/15 text-primary border border-primary/30"
+              : p.key === "blackmarket" && phase !== "blackmarket"
+                ? i < phaseIndex ? "text-muted-foreground/40 line-through" : "text-red-400/60"
               : i < phaseIndex ? "text-muted-foreground/40 line-through"
               : "text-muted-foreground/60"
             }`}>
@@ -71,9 +76,10 @@ export default function Game() {
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
 
   if (phase === "ceoselect") return <CEOSelectionPhase />;
-  if (phase === "gameover") return <GameOver />;
+  if (phase === "gameover")  return <GameOver />;
 
   const isActionPhase = phase === "action";
+  const isBlackMarket = phase === "blackmarket";
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -84,27 +90,30 @@ export default function Game() {
         <div className="max-w-4xl mx-auto">
           {phase === "intel"        && <IntelPhase />}
           {phase === "boardmeeting" && <BoardMeetingPhase />}
+          {phase === "blackmarket"  && <BlackMarketPhase />}
           {phase === "event"        && <EventPhase />}
           {phase === "action"       && <ActionPhase />}
           {phase === "resolution"   && <ResolutionPhase />}
         </div>
       </main>
 
-      {/* Command Center FAB */}
-      <div className="fixed bottom-4 right-4 z-30">
-        <button
-          onClick={() => setCommandCenterOpen(true)}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-lg transition-all duration-200 ${
-            isActionPhase
-              ? "bg-secondary border border-border text-muted-foreground"
-              : "bg-card border border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 pulse-glow"
-          }`}
-        >
-          {isActionPhase ? <Lock className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
-          {t("upgrades.title")}
-          {isActionPhase && <span className="text-[10px] text-muted-foreground ml-1">(locked)</span>}
-        </button>
-      </div>
+      {/* Command Center FAB — hidden during black market and action */}
+      {!isBlackMarket && (
+        <div className="fixed bottom-4 right-4 z-30">
+          <button
+            onClick={() => setCommandCenterOpen(true)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-lg transition-all duration-200 ${
+              isActionPhase
+                ? "bg-secondary border border-border text-muted-foreground"
+                : "bg-card border border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 pulse-glow"
+            }`}
+          >
+            {isActionPhase ? <Lock className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
+            {t("upgrades.title")}
+            {isActionPhase && <span className="text-[10px] text-muted-foreground ml-1">(locked)</span>}
+          </button>
+        </div>
+      )}
 
       {commandCenterOpen && <CommandCenter onClose={() => setCommandCenterOpen(false)} />}
     </div>

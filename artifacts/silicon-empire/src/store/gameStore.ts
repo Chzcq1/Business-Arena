@@ -1,5 +1,5 @@
-// ===== SILICON EMPIRE v4 — Game Store =====
-// Zustand store หลักของเกม ควบคุมทุก state และ action
+// ===== SILICON EMPIRE v5 — Game Store =====
+// v5.0: Data extracted to src/game-data/, Black Market + Action Cards + Time-Freeze Events
 
 import { create } from "zustand";
 import type {
@@ -8,8 +8,18 @@ import type {
   AntitrustState, ComponentsState, BoardDirective, QuarterEvent,
   IntelAlert, ResolutionResult, MarketIntel, BotScheduledAction,
   CapitalHistoryEntry, CEOBackgroundType, CEOBackground,
-  BotPersonaType, HypeCampaignState,
+  BotPersonaType, HypeCampaignState, ActiveCardEffects,
 } from "./types";
+import { INIT_ACTIVE_EFFECTS } from "./types";
+
+// v5.0: All game data lives in src/game-data/ — easy to edit, no coding required
+import { EVENTS, BOT_POSITIVE_EVENTS, BOT_NEGATIVE_EVENTS, TIME_FREEZE_EVENTS } from "@/game-data/eventsData";
+import type { TimeFreezeEventData } from "@/game-data/eventsData";
+import { pickDirectives } from "@/game-data/directivesData";
+import { CEO_BACKGROUNDS } from "@/game-data/ceoClasses";
+import { PERSONA_TYPES, BOT_PERSONA_META } from "@/game-data/botPersonas";
+import { ACTION_CARDS, BLACK_MARKET_CARD_COUNT, MAX_EQUIPPED_CARDS } from "@/game-data/actionCards";
+import type { ActionCard, EquippedCard } from "@/game-data/actionCards";
 
 // ===== CONSTANTS =====
 const QUARTER_DURATION = 60;
@@ -18,37 +28,7 @@ const INSTANT_WIN_CAPITAL = 1_000_000_000;
 const BASE_UNIT_COST = 200;
 const TOTAL_MARKET = 5_000_000;
 
-// ===== CEO BACKGROUND DEFINITIONS v4.0 =====
-const CEO_BACKGROUNDS: Record<CEOBackgroundType, CEOBackground> = {
-  visionary: {
-    type: "visionary",
-    productionCostModifier: 1.15,  // base cost +15% (spec)
-    ecotechModifier: 1.0,
-    ecotechCostModifier: 0.80,     // upgrade costs -20% (spec)
-    brandLoyalistBonus: 1.0,
-    eWastePenaltyReduction: 1.0,
-    priceCeilingModifier: 1.0,
-  },
-  marketer: {
-    type: "marketer",
-    productionCostModifier: 1.0,
-    ecotechModifier: 1.0,
-    ecotechCostModifier: 1.20,     // upgrade costs +20% (spec)
-    brandLoyalistBonus: 1.15,      // brand loyalists +15% (spec)
-    eWastePenaltyReduction: 1.0,
-    priceCeilingModifier: 1.0,
-  },
-  operator: {
-    type: "operator",
-    productionCostModifier: 0.85,  // base cost -15% (spec)
-    ecotechModifier: 1.0,
-    ecotechCostModifier: 1.0,
-    brandLoyalistBonus: 1.0,
-    eWastePenaltyReduction: 0.50,  // E-Waste -50% (spec)
-    priceCeilingModifier: 0.90,    // price ceiling reduced (spec)
-  },
-};
-
+// Component upgrade costs stay here — tightly coupled to resolution engine
 const COMPONENT_UPGRADE_COSTS: Record<keyof ComponentsState, number[]> = {
   chip:    [0, 0, 3, 5, 8, 12],
   battery: [0, 0, 2, 4, 6, 9],
@@ -56,131 +36,12 @@ const COMPONENT_UPGRADE_COSTS: Record<keyof ComponentsState, number[]> = {
   memory:  [0, 0, 2, 3, 5, 8],
 };
 
-// ===== v4.0: 15 Board Directives =====
-const ALL_DIRECTIVES: BoardDirective[] = [
-  "aggressive_rd", "austerity", "market_expansion",
-  "brand_campaign", "cost_cutting", "talent_retention",
-  "premium_focus", "volume_play",
-  // Dark Tactics
-  "planned_obsolescence", "industrial_espionage",
-  // New
-  "flash_sale", "viral_launch", "headcount_freeze",
-  "supply_chain_deal", "green_initiative",
-];
-
-// ===== EVENTS =====
-const EVENTS: QuarterEvent[] = [
-  {
-    id: "supply_crunch", type: "supply",
-    en: { title: "Supply Chain Disruption", description: "A major chip supplier faces shortages. Production costs will spike unless you act now." },
-    th: { title: "ปัญหาซัพพลายเชน", description: "ผู้จัดจำหน่ายชิพรายสำคัญขาดแคลน ต้นทุนการผลิตจะพุ่งสูงหากคุณไม่ดำเนินการ" },
-    choices: [
-      { id: "stockpile", effect: { capital: -5_000_000, morale: 5 }, en: { label: "Pre-buy Components (−$5M)", description: "Lock in current pricing" }, th: { label: "ซื้อชิ้นส่วนล่วงหน้า (−$5M)", description: "ล็อคราคาก่อนที่จะแพงขึ้น" } },
-      { id: "pivot", effect: { techLevel: -1, morale: -5 }, en: { label: "Use Alternative Supplier", description: "Slower components, stable supply" }, th: { label: "เปลี่ยนซัพพลายเออร์", description: "ชิ้นส่วนช้าลงแต่ซัพพลายมั่นคง" } },
-      { id: "absorb", effect: { capital: -2_000_000, morale: -10 }, en: { label: "Absorb the Cost (−$2M)", description: "Pay the premium, hope it resolves" }, th: { label: "รับต้นทุนเพิ่ม (−$2M)", description: "จ่ายส่วนต่าง หวังว่าจะผ่านเร็วๆ" } },
-    ],
-  },
-  {
-    id: "viral_buzz", type: "market",
-    en: { title: "Viral Product Leak", description: "An unannounced feature leaked online and is trending. Consumer demand is surging." },
-    th: { title: "ผลิตภัณฑ์รั่วไหลเป็นไวรัล", description: "ฟีเจอร์ที่ยังไม่ประกาศรั่วไหลและกำลังเป็นกระแส ความต้องการพุ่งสูง" },
-    choices: [
-      { id: "capitalize", effect: { morale: 15, marketShare: 3 }, en: { label: "Launch Teaser Campaign", description: "Ride the hype wave (+Brand)" }, th: { label: "เปิดตัวแคมเปญทีเซอร์", description: "ขี่กระแสความฮือฮา (+แบรนด์)" } },
-      { id: "deny", effect: { morale: -5, capital: -1_000_000 }, en: { label: "Issue Denial (−$1M)", description: "Protect the surprise" }, th: { label: "ออกแถลงการณ์ปฏิเสธ (−$1M)", description: "ปกป้องความเซอร์ไพรส์" } },
-    ],
-  },
-  {
-    id: "hire_researcher", type: "research",
-    en: { title: "Top Researcher Available", description: "A senior AI researcher from a failing startup wants to join your R&D team. Cost: $8M. Grants +6 EcoTech." },
-    th: { title: "นักวิจัยชั้นนำพร้อมรับสมัคร", description: "นักวิจัย AI อาวุโสจาก startup ที่กำลังล้มต้องการเข้าร่วม R&D ค่าจ้าง $8M รับ +6 EcoTech" },
-    choices: [
-      { id: "hire", effect: { capital: -8_000_000, ecotechBonus: 6 }, en: { label: "Hire Researcher (−$8M, +6 EcoTech)", description: "Long-term R&D investment" }, th: { label: "จ้างนักวิจัย (−$8M, +6 EcoTech)", description: "การลงทุน R&D ระยะยาว" } },
-      { id: "poach_for_less", effect: { capital: -4_000_000, ecotechBonus: 2 }, en: { label: "Hire as Contractor (−$4M, +2 EcoTech)", description: "Partial benefit, lower commitment" }, th: { label: "จ้างแบบ Contract (−$4M, +2 EcoTech)", description: "ได้ประโยชน์บางส่วน ลงทุนน้อยกว่า" } },
-      { id: "pass", effect: { morale: -3 }, en: { label: "Pass on this Opportunity", description: "Miss the chance, team morale drops" }, th: { label: "ปฏิเสธโอกาสนี้", description: "พลาดโอกาส ขวัญกำลังใจลดลง" } },
-    ],
-  },
-  {
-    id: "regulation_warning", type: "regulation",
-    en: { title: "Data Privacy Regulation Incoming", description: "Government signals upcoming privacy laws. Early compliance costs capital but avoids future penalties." },
-    th: { title: "กฎระเบียบความเป็นส่วนตัวกำลังมา", description: "รัฐบาลส่งสัญญาณกฎหมาย privacy ที่กำลังจะมา ปฏิบัติตามเนิ่นๆ เสียเงินแต่หลีกเลี่ยงค่าปรับในอนาคต" },
-    choices: [
-      { id: "early_comply", effect: { capital: -3_000_000, morale: 15 }, en: { label: "Comply Early (−$3M, +Morale)", description: "Show leadership in responsibility" }, th: { label: "ปฏิบัติตามเนิ่นๆ (−$3M, +ขวัญกำลังใจ)", description: "แสดงความเป็นผู้นำด้านความรับผิดชอบ" } },
-      { id: "wait_watch", effect: { morale: -5 }, en: { label: "Monitor & Wait", description: "Defer until law passes" }, th: { label: "ติดตามและรอ", description: "รอจนกฎหมายผ่าน" } },
-      { id: "lobby", effect: { capital: -1_500_000, morale: -10 }, en: { label: "Lobby Against It (−$1.5M)", description: "Fight the regulation, reputational risk" }, th: { label: "ล็อบบี้คัดค้าน (−$1.5M)", description: "ต่อสู้กับกฎระเบียบ เสี่ยงด้านชื่อเสียง" } },
-    ],
-  },
-  {
-    id: "tech_breakthrough_event", type: "tech",
-    en: { title: "R&D Breakthrough Opportunity", description: "Your team discovered a new battery chemistry. Invest heavily to commercialize it and gain a competitive edge." },
-    th: { title: "โอกาสก้าวหน้าทาง R&D", description: "ทีมของคุณค้นพบเคมีแบตเตอรี่ใหม่ ลงทุนเพื่อนำมาใช้เชิงพาณิชย์และได้เปรียบการแข่งขัน" },
-    choices: [
-      { id: "invest_heavy", effect: { capital: -10_000_000, ecotechBonus: 5, techLevel: 1 }, en: { label: "Full Investment (−$10M, +5 EcoTech, +1 Tech)", description: "Fast-track to market, high cost" }, th: { label: "ลงทุนเต็มที่ (−$10M, +5 EcoTech, +1 Tech)", description: "รีบนำสู่ตลาด ต้นทุนสูง" } },
-      { id: "invest_modest", effect: { capital: -4_000_000, ecotechBonus: 2 }, en: { label: "Modest Investment (−$4M, +2 EcoTech)", description: "Slower but sustainable" }, th: { label: "ลงทุนพอประมาณ (−$4M, +2 EcoTech)", description: "ช้ากว่าแต่ยั่งยืนกว่า" } },
-      { id: "license_out", effect: { capital: 3_000_000 }, en: { label: "License the Patent (+$3M)", description: "Sell the rights, don't build in-house" }, th: { label: "อนุญาตสิทธิบัตร (+$3M)", description: "ขายสิทธิ์ ไม่พัฒนาภายใน" } },
-    ],
-  },
-  {
-    id: "talent_war", type: "market",
-    en: { title: "Talent War", description: "A competitor is poaching your senior engineers with 60% salary bumps." },
-    th: { title: "สงครามแย่งชิงความสามารถ", description: "คู่แข่งดึงวิศวกรอาวุโสของคุณด้วยการขึ้นเงินเดือน 60%" },
-    choices: [
-      { id: "counter_offer", effect: { capital: -6_000_000, morale: 20 }, en: { label: "Counter-Offer Team (−$6M)", description: "Match competitor packages" }, th: { label: "เสนอค่าตอบแทนสูงกว่า (−$6M)", description: "แข่งกับแพ็คเกจคู่แข่ง" } },
-      { id: "let_go", effect: { morale: -20, ecotechBonus: -2 }, en: { label: "Let Some Engineers Go", description: "Lose talent, lose research speed" }, th: { label: "ปล่อยวิศวกรบางส่วนไป", description: "สูญเสียความสามารถและความเร็ว R&D" } },
-      { id: "culture_fix", effect: { capital: -2_000_000, morale: 12 }, en: { label: "Invest in Culture (−$2M, +Morale)", description: "Long-term retention strategy" }, th: { label: "ลงทุนในวัฒนธรรมองค์กร (−$2M, +ขวัญกำลังใจ)", description: "กลยุทธ์ retention ระยะยาว" } },
-    ],
-  },
-  {
-    id: "market_bubble", type: "market",
-    en: { title: "Speculative Market Bubble", description: "Analyst predictions show a 30% demand surge for premium devices. Do you ramp up or stay cautious?" },
-    th: { title: "ฟองสบู่ตลาดแบบ speculative", description: "นักวิเคราะห์คาดการณ์ความต้องการ premium device เพิ่ม 30% คุณจะเพิ่มหรือรอดู?" },
-    choices: [
-      { id: "ramp_up", effect: { capital: -8_000_000, morale: 10, marketShare: 5 }, en: { label: "Aggressively Ramp Production (−$8M)", description: "High risk, high reward" }, th: { label: "เพิ่มการผลิตเชิงรุก (−$8M)", description: "ความเสี่ยงสูง ผลตอบแทนสูง" } },
-      { id: "stay_cautious", effect: { capital: 2_000_000 }, en: { label: "Stay Conservative (+$2M from efficiency)", description: "No risk, moderate reward" }, th: { label: "รอดูสถานการณ์ (+$2M จากประสิทธิภาพ)", description: "ไม่เสี่ยง ผลตอบแทนพอควร" } },
-    ],
-  },
-  {
-    id: "patent_war", type: "regulation",
-    en: { title: "Patent Infringement Claim", description: "A tech giant is threatening a lawsuit over your display technology. Settle or fight." },
-    th: { title: "คดีละเมิดสิทธิบัตร", description: "บริษัทเทคยักษ์ใหญ่กำลังขู่ฟ้องเกี่ยวกับเทคโนโลยีหน้าจอของคุณ จะยอมความหรือสู้?" },
-    choices: [
-      { id: "settle", effect: { capital: -12_000_000 }, en: { label: "Settle Out of Court (−$12M)", description: "Expensive but quick resolution" }, th: { label: "ยอมความนอกศาล (−$12M)", description: "แพงแต่จบเร็ว" } },
-      { id: "fight", effect: { capital: -5_000_000, morale: -15 }, en: { label: "Fight in Court (−$5M upfront, risky)", description: "Cheaper if you win, catastrophic if you lose" }, th: { label: "สู้ในศาล (−$5M ล่วงหน้า เสี่ยง)", description: "ถูกกว่าถ้าชนะ แต่หายนะถ้าแพ้" } },
-      { id: "pivot_tech", effect: { capital: -3_000_000, techLevel: -1 }, en: { label: "Redesign to Avoid Patent (−$3M, −1 Tech)", description: "Safe but sets you back technically" }, th: { label: "ออกแบบใหม่หลีกเลี่ยงสิทธิบัตร (−$3M, −1 Tech)", description: "ปลอดภัย แต่ถดถอยเชิงเทค" } },
-    ],
-  },
-];
-
-const BOT_POSITIVE_EVENTS = [
-  { label: "Bot received $20M investor injection", capitalDelta: 20_000_000 },
-  { label: "Bot supply deal locked in — costs −10%", capitalDelta: 8_000_000 },
-  { label: "Bot brand partnership — market share +2%", capitalDelta: 5_000_000 },
-  { label: "Bot government contract secured: +$15M", capitalDelta: 15_000_000 },
-];
-
-const BOT_NEGATIVE_EVENTS = [
-  { label: "Bot hit with $12M regulatory fine", capitalDelta: -12_000_000 },
-  { label: "Bot supply crisis — revenue impact −$8M", capitalDelta: -8_000_000 },
-  { label: "Bot executive scandal — capital penalty −$15M", capitalDelta: -15_000_000 },
-  { label: "Bot product recall — $10M liability", capitalDelta: -10_000_000 },
-];
-
 // ===== HELPERS =====
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
-}
-function pickDirectives(): BoardDirective[] {
-  // Always include 1 dark tactic in the pool after Q4 (25% chance)
-  const darkTactics: BoardDirective[] = ["planned_obsolescence", "industrial_espionage"];
-  const normal = ALL_DIRECTIVES.filter((d) => !darkTactics.includes(d));
-  const pool = [...normal].sort(() => Math.random() - 0.5).slice(0, 3);
-  // 30% chance to swap one slot for a dark tactic
-  if (Math.random() < 0.30) {
-    pool[Math.floor(Math.random() * 3)] = pickRandom(darkTactics);
-  }
-  return pool;
 }
 function generateMarketIntel(player: PlayerMetrics): MarketIntel {
   const trends = ["rising", "stable", "falling"] as const;
@@ -195,7 +56,7 @@ function generateMarketIntel(player: PlayerMetrics): MarketIntel {
   };
 }
 
-// ===== v4.0: Bot Schedule — Persona Aware =====
+// v5.0: Bot schedule uses persona behavior from botPersonas.ts config
 function generateBotSchedule(
   bot: BotState,
   quarter: number,
@@ -204,17 +65,20 @@ function generateBotSchedule(
 ): BotScheduledAction[] {
   const actions: BotScheduledAction[] = [];
   const aggression = Math.min(0.3 + quarter * 0.04, 0.85);
+  const behavior = persona ? BOT_PERSONA_META[persona]?.behavior : null;
 
   if (Math.random() < 0.8) {
     let targetPrice: number;
-    if (persona === "discount_king") {
-      const discount = 0.15 + Math.random() * 0.10;
+    if (behavior?.priceBehavior === "undercut" && behavior.priceUndercutRange) {
+      const [min, max] = behavior.priceUndercutRange;
+      const discount = min + Math.random() * (max - min);
       targetPrice = Math.floor(playerPrice * (1 - discount));
-    } else if (persona === "tech_premium") {
-      const premium = 0.15 + Math.random() * 0.10;
+    } else if (behavior?.priceBehavior === "premium" && behavior.pricePremiumRange) {
+      const [min, max] = behavior.pricePremiumRange;
+      const premium = min + Math.random() * (max - min);
       targetPrice = Math.floor(Math.max(bot.price, playerPrice) * (1 + premium));
-    } else if (persona === "copycat") {
-      const noise = Math.floor(Math.random() * 41) - 20;
+    } else if (behavior?.priceBehavior === "mirror" && behavior.priceMirrorNoise !== undefined) {
+      const noise = Math.floor(Math.random() * (behavior.priceMirrorNoise * 2 + 1)) - behavior.priceMirrorNoise;
       targetPrice = playerPrice + noise;
     } else {
       const delta = (Math.random() < aggression ? -1 : 1) * (Math.floor(Math.random() * 6) + 2) * 10;
@@ -232,15 +96,10 @@ function generateBotSchedule(
   }
 
   if (Math.random() < 0.7) {
-    let prodShift: number;
-    if (persona === "discount_king") {
-      prodShift = Math.floor(Math.random() * 3 + 1) * 1_000_000;
-    } else if (persona === "tech_premium") {
-      prodShift = (Math.random() < 0.35 ? -1 : 1) * Math.floor(Math.random() * 2 + 1) * 500_000;
-    } else {
-      const dir = Math.random() < 0.55 ? -1 : 1;
-      prodShift = dir * Math.floor(Math.random() * 3 + 1) * 1_000_000;
-    }
+    const [prodMin, prodMax] = behavior?.prodChangeRange ?? [1, 3];
+    const incChance = behavior?.prodIncreaseChance ?? 0.55;
+    const dir = Math.random() < incChance ? 1 : -1;
+    const prodShift = dir * Math.floor(Math.random() * (prodMax - prodMin) + prodMin) * 1_000_000;
     actions.push({
       triggerAtSecond: Math.floor(Math.random() * 20) + 5,
       executed: false,
@@ -253,7 +112,7 @@ function generateBotSchedule(
   return actions.sort((a, b) => a.triggerAtSecond - b.triggerAtSecond);
 }
 
-// ===== RESOLUTION ENGINE v4.0 =====
+// ===== RESOLUTION ENGINE v5.0 =====
 function resolveQuarter(
   player: PlayerMetrics,
   draft: PlayerDraft,
@@ -269,9 +128,9 @@ function resolveQuarter(
   hypeCampaignActive: boolean,
   tradeBanActive: boolean,
   prDisasterActive: boolean,
+  cardEffects: ActiveCardEffects = INIT_ACTIVE_EFFECTS,
 ): Omit<ResolutionResult, "botEventLabel" | "darkTacticsCaught" | "darkTacticsLabel" | "tradeBanApplied" | "prDisasterApplied" | "hypeFulfilled"> {
 
-  // === Unit Cost (Exponential Bottleneck + CEO modifier) ===
   const factoryDiscount = upgrades.componentFactory ? 0.75 : 1.0;
   const memoryDiscount = [1.0, 1.0, 1.0, 0.97, 0.95, 0.93][clamp(components.memory, 0, 5)];
   const baseCost = BASE_UNIT_COST * factoryDiscount * memoryDiscount * ceoBackground.productionCostModifier;
@@ -279,80 +138,75 @@ function resolveQuarter(
   const prodRatio = draft.productionBudget / 10_000_000;
   let costMultiplier = 1 + Math.pow(prodRatio, 2) * 0.4;
   if (executives.coo) costMultiplier = Math.min(costMultiplier, 1.5);
-  if (boardDirective === "aggressive_rd") costMultiplier *= 1.10;
-  if (boardDirective === "cost_cutting")  costMultiplier *= 0.85;
-  if (boardDirective === "supply_chain_deal") costMultiplier *= 0.85;
-
+  if (boardDirective === "aggressive_rd")      costMultiplier *= 1.10;
+  if (boardDirective === "cost_cutting")       costMultiplier *= 0.85;
+  if (boardDirective === "supply_chain_deal")  costMultiplier *= 0.85;
   const effectiveUnitCost = Math.round(baseCost * costMultiplier);
 
-  // === Capacity ===
+  // Player capacity
   let playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
-  // Trade ban: player cannot sell this quarter
   if (tradeBanActive) playerCapacity = 0;
 
+  // Bot capacity (v5.0: reduced by action card botCapacityMult)
   const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
   const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
-  const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityRaw * 0.70) : botCapacityRaw;
+  const botCapacityWithCards = Math.floor(botCapacityRaw * cardEffects.botCapacityMult);
+  const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityWithCards * 0.70) : botCapacityWithCards;
 
-  // === 3-Segment Market ===
   const BUDGET_SEG = TOTAL_MARKET * 0.40;
   const TECH_SEG   = TOTAL_MARKET * 0.30;
   const BRAND_SEG  = TOTAL_MARKET * 0.30;
 
-  // Budget share: lower price wins
   const budgetShare = clamp(0.5 + (bot.price - draft.price) / 300, 0.05, 0.95);
 
-  // Tech share: tech level + espionage bonus
+  // Tech share (v5.0: playerTechBonus from cards)
   const espionageTechBonus = boardDirective === "industrial_espionage" ? 2 : 0;
   const chipMultiplier = [1.0, 1.0, 1.12, 1.25, 1.40, 1.60][clamp(components.chip, 0, 5)];
-  const rawTechShare = 0.5 + (player.techLevel + espionageTechBonus - (bot.techLevel + (bot.components?.chip ?? 1) * 0.2)) * 0.10;
+  const effectiveTech = player.techLevel + cardEffects.playerTechBonus;
+  const rawTechShare = 0.5 + (effectiveTech + espionageTechBonus - (bot.techLevel + (bot.components?.chip ?? 1) * 0.2)) * 0.10;
   const techShare = clamp(rawTechShare * chipMultiplier, 0.05, 0.97);
 
-  // Brand share + CEO modifier
+  // Brand share (v5.0: botBrandDelta reduces bot brand)
   const displayBrandBonus = components.display >= 5 ? 1.20 : components.display >= 4 ? 1.10 : 1.0;
+  const effectiveBotBrand = bot.brandPerception + cardEffects.botBrandDelta;
   const brandShare = clamp(
-    (0.5 + (player.brandPerception - bot.brandPerception) * 0.008) * displayBrandBonus * ceoBackground.brandLoyalistBonus,
+    (0.5 + (player.brandPerception - effectiveBotBrand) * 0.008) * displayBrandBonus * ceoBackground.brandLoyalistBonus,
     0.05, 0.95
   );
 
-  // Price elasticity (CEO priceCeilingModifier + premium_focus directive)
   const displayCeilingMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][clamp(components.display, 0, 5)];
   let maxViablePrice = player.techLevel * 200 * displayCeilingMult * ceoBackground.priceCeilingModifier;
-  if (boardDirective === "premium_focus") maxViablePrice *= 1.15; // premium focus lifts ceiling
+  if (boardDirective === "premium_focus") maxViablePrice *= 1.15;
 
   let demandFactor = 1.0;
   if (draft.price > maxViablePrice) {
     demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
   }
 
-  // Battery milestone penalty
   const batteryPenaltyApplied = quarter >= 3 && components.battery < 2;
   let revenueMultiplier = batteryPenaltyApplied ? 0.80 : 1.0;
-
-  // Flash sale: revenue per unit × 0.80
   if (boardDirective === "flash_sale") revenueMultiplier *= 0.80;
 
-  // Memory + Battery demand bonuses
   const memBudgetBonus = [1.0, 1.0, 1.06, 1.12, 1.18, 1.25][clamp(components.memory, 0, 5)];
   const batteryBudgetBonus = components.battery >= 4 ? 1.08 : 1.0;
 
-  // === Demand Multipliers ===
+  // Demand multipliers (v5.0: playerDemandMult from cards applied last)
   let demandMult = 1.0;
-  if (boardDirective === "market_expansion")    demandMult = 1.12;
-  if (boardDirective === "planned_obsolescence") demandMult = 1.30; // dark tactic demand boost
+  if (boardDirective === "market_expansion")     demandMult = 1.12;
+  if (boardDirective === "planned_obsolescence") demandMult = 1.30;
   if (boardDirective === "flash_sale")           demandMult = 1.25;
   if (boardDirective === "viral_launch")         demandMult *= 1.10;
-  if (prDisasterActive)   demandMult *= 0.50; // PR Disaster halves all demand
-  if (hypeCampaignActive) demandMult *= 1.40; // Hype campaign boosts demand
+  if (prDisasterActive)   demandMult *= 0.50;
+  if (hypeCampaignActive) demandMult *= 1.40;
+  demandMult *= cardEffects.playerDemandMult;
 
-  const budgetVolumeMult = boardDirective === "volume_play" ? 1.15 : 1.0;
+  const budgetVolumeMult  = boardDirective === "volume_play" ? 1.15 : 1.0;
   const techVolumePenalty = boardDirective === "volume_play" ? 0.95 : 1.0;
 
-  // === Raw Demand per Segment ===
   const playerBudgetDemand = BUDGET_SEG * budgetShare * memBudgetBonus * batteryBudgetBonus * budgetVolumeMult * demandMult;
   const playerTechDemand   = TECH_SEG   * techShare   * demandFactor * techVolumePenalty * demandMult;
   const playerBrandDemand  = BRAND_SEG  * brandShare  * demandMult;
-  const playerRawDemand = tradeBanActive ? 0 : Math.floor(playerBudgetDemand + playerTechDemand + playerBrandDemand);
+  const playerRawDemand    = tradeBanActive ? 0 : Math.floor(playerBudgetDemand + playerTechDemand + playerBrandDemand);
 
   const botBrandMod = sabotage.prPending ? 0.93 : 1.0;
   const botRawDemand = Math.floor(
@@ -361,22 +215,18 @@ function resolveQuarter(
     BRAND_SEG  * (1 - brandShare) * botBrandMod
   );
 
-  // === Sales ===
   const playerSales = Math.min(playerCapacity, playerRawDemand);
   const botSales    = Math.min(botCapacity, botRawDemand);
 
-  // Segment breakdown
   const demandTotal = Math.max(playerRawDemand, 1);
   const segBudget = Math.floor(playerSales * (playerBudgetDemand / demandTotal));
   const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
   const segBrand  = Math.max(0, playerSales - segBudget - segTech);
 
-  // === E-Waste (CEO eWastePenaltyReduction) ===
   const playerUnsold = Math.max(0, playerCapacity - playerRawDemand);
   const cfoEWaste = executives.cfo ? 0.70 : 1.0;
   const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 1.5 * ceoBackground.eWastePenaltyReduction * cfoEWaste);
 
-  // === Revenue & Profit ===
   const playerRevenue = Math.floor(playerSales * draft.price * revenueMultiplier);
   const playerVariableCost = playerSales * effectiveUnitCost;
   let playerFixedCost = draft.productionBudget * 0.2;
@@ -385,7 +235,6 @@ function resolveQuarter(
   const grossProfit = playerRevenue - playerVariableCost - playerFixedCost;
   const playerProfit = grossProfit - eWastePenalty;
 
-  // Directive direct costs
   const directiveCost = boardDirective === "brand_campaign"    ? 5_000_000
     : boardDirective === "talent_retention" ? 3_000_000
     : boardDirective === "viral_launch"     ? 8_000_000 : 0;
@@ -393,19 +242,15 @@ function resolveQuarter(
   const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
   const capitalChange = playerProfit - debtRepayment - directiveCost;
 
-  // Bot financials
   const botRevenue = botSales * bot.price;
-  const botCost = botSales * botBaseCost + bot.productionBudget * 0.2;
-  const botProfit = botRevenue - botCost;
+  const botCost    = botSales * botBaseCost + bot.productionBudget * 0.2;
+  const botProfit  = botRevenue - botCost;
 
-  // === Market share ===
   const newPlayerShare = (playerSales + botSales) > 0
     ? (playerSales / (playerSales + botSales)) * 100
     : player.marketShare;
 
-  // === Metrics Changes ===
-  const techGrowth = upgrades.legendaryEngineer ? 2
-    : boardDirective === "aggressive_rd" ? 1 : 0;
+  const techGrowth = upgrades.legendaryEngineer ? 2 : boardDirective === "aggressive_rd" ? 1 : 0;
 
   let brandChange = playerSales > botSales ? 4 : playerSales < botSales ? -3 : 0;
   if (boardDirective === "brand_campaign") brandChange += 15;
@@ -418,26 +263,24 @@ function resolveQuarter(
   if (boardDirective === "talent_retention") moraleChange += 10;
   if (boardDirective === "headcount_freeze") moraleChange -= 10;
 
-  // === EcoTech Earned ===
-  let ecotechEarned = 2; // base
+  let ecotechEarned = 2;
   if (upgrades.legendaryEngineer) ecotechEarned += 2;
   if (components.chip >= 4) ecotechEarned += 1;
-  if (boardDirective === "aggressive_rd")   ecotechEarned += 3;
+  if (boardDirective === "aggressive_rd")    ecotechEarned += 3;
   if (boardDirective === "green_initiative") ecotechEarned += 3;
   ecotechEarned = Math.round(ecotechEarned * ceoBackground.ecotechModifier);
 
-  // === Summary ===
   let summaryKey = "summaries.default";
-  if (tradeBanActive)                                              summaryKey = "summaries.espionage_banned";
-  else if (prDisasterActive)                                       summaryKey = "summaries.hype_disaster";
-  else if (batteryPenaltyApplied)                                  summaryKey = "summaries.battery_penalty";
-  else if (demandFactor < 0.3)                                     summaryKey = "summaries.elasticity";
+  if (tradeBanActive)                                                summaryKey = "summaries.espionage_banned";
+  else if (prDisasterActive)                                         summaryKey = "summaries.hype_disaster";
+  else if (batteryPenaltyApplied)                                    summaryKey = "summaries.battery_penalty";
+  else if (demandFactor < 0.3)                                       summaryKey = "summaries.elasticity";
   else if (eWastePenalty > 0 && eWastePenalty > playerRevenue * 0.20) summaryKey = "summaries.ewaste";
-  else if (playerSales > botSales * 1.35)                          summaryKey = "summaries.dominant";
-  else if (playerSales < botSales * 0.65)                          summaryKey = "summaries.rough";
-  else if (capitalChange < 0)                                      summaryKey = "summaries.burning";
-  else if (playerSales > botSales && capitalChange > 2_000_000)    summaryKey = "summaries.strong";
-  else                                                             summaryKey = "summaries.neckAndNeck";
+  else if (playerSales > botSales * 1.35)                            summaryKey = "summaries.dominant";
+  else if (playerSales < botSales * 0.65)                            summaryKey = "summaries.rough";
+  else if (capitalChange < 0)                                        summaryKey = "summaries.burning";
+  else if (playerSales > botSales && capitalChange > 2_000_000)      summaryKey = "summaries.strong";
+  else                                                               summaryKey = "summaries.neckAndNeck";
 
   return {
     playerSalesUnits: playerSales, botSalesUnits: botSales,
@@ -478,14 +321,13 @@ interface GameState {
   player: PlayerMetrics;
   draft: PlayerDraft;
   ceoBackground: CEOBackground | null;
-
-  // v4.0 Bot Persona
   botPersona: BotPersonaType | null;
-
   bot: BotState;
 
   quarterTimer: number;
   timerRunning: boolean;
+  timerPaused: boolean;            // v5.0: true during time-freeze event
+  pendingTimeFreezeAt: number | null; // v5.0: elapsed seconds when freeze triggers
   playerReady: boolean;
   botLocked: boolean;
   botLockTime: number;
@@ -507,19 +349,28 @@ interface GameState {
   pendingDirectives: BoardDirective[];
   antitrust: AntitrustState;
   capitalHistory: CapitalHistoryEntry[];
-
   lastResolution: ResolutionResult | null;
 
-  // v4.0 Special States
+  // v4.0
   hypeCampaign: HypeCampaignState | null;
-  tradeBanActive: boolean;     // active this quarter (set from previous quarter's espionage catch)
-  prDisasterActive: boolean;   // active this quarter (set from previous quarter's hype fail)
+  tradeBanActive: boolean;
+  prDisasterActive: boolean;
+
+  // v5.0 Black Market & Action Cards
+  blackMarketCards: ActionCard[];
+  equippedCards: EquippedCard[];
+  activeCardEffects: ActiveCardEffects;
+
+  // v5.0 Time-Freeze Events
+  timeFreezeEvent: TimeFreezeEventData | null;
 
   // ===== ACTIONS =====
   startGame: () => void;
   selectCEOBackground: (type: CEOBackgroundType) => void;
   advanceToBoardMeeting: () => void;
   chooseBoardDirective: (d: BoardDirective) => void;
+  buyActionCard: (cardId: string) => void;       // v5.0
+  proceedFromBlackMarket: () => void;             // v5.0
   resolveEvent: (choiceId: string) => void;
   startActionPhase: () => void;
   tickTimer: () => void;
@@ -530,7 +381,6 @@ interface GameState {
   lockAndResolve: () => void;
   nextQuarter: () => void;
   toggleLanguage: () => void;
-
   hireExecutive: (type: "cfo" | "coo") => void;
   purchaseUpgrade: (type: "componentFactory" | "legendaryEngineer") => void;
   takeOutLoan: () => void;
@@ -538,10 +388,9 @@ interface GameState {
   withdrawBiddingWar: () => void;
   launchSabotage: (type: "ddos" | "pr") => void;
   upgradeComponent: (comp: keyof ComponentsState) => void;
-
-  // v4.0
   launchHypeCampaign: () => void;
-
+  useActionCard: (cardId: string) => void;         // v5.0
+  resolveTimeFreezeEvent: (choiceId: string) => void; // v5.0
   resetGame: () => void;
 }
 
@@ -556,11 +405,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   draft: { ...INIT_DRAFT },
   ceoBackground: null,
   botPersona: null,
-
   bot: { ...INIT_BOT },
 
   quarterTimer: QUARTER_DURATION,
   timerRunning: false,
+  timerPaused: false,
+  pendingTimeFreezeAt: null,
   playerReady: false,
   botLocked: false,
   botLockTime: 20,
@@ -582,47 +432,39 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingDirectives: [],
   antitrust: { ...INIT_ANTITRUST },
   capitalHistory: [],
-
   lastResolution: null,
 
   hypeCampaign: null,
   tradeBanActive: false,
   prDisasterActive: false,
 
+  blackMarketCards: [],
+  equippedCards: [],
+  activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+  timeFreezeEvent: null,
+
   // ===== ACTIONS =====
 
-  // Legacy startGame — now a no-op; game starts at ceoselect and player calls selectCEOBackground
-  startGame: () => {
-    // Do nothing; selectCEOBackground handles game start
-  },
+  startGame: () => {},
 
-  // v4.0: CEO Selection — assigns random bot persona, starts intel phase
   selectCEOBackground: (type) => {
     const ceoBackground = CEO_BACKGROUNDS[type];
-    const personaTypes: BotPersonaType[] = ["discount_king", "tech_premium", "copycat"];
-    const botPersona = personaTypes[Math.floor(Math.random() * 3)];
+    const botPersona = PERSONA_TYPES[Math.floor(Math.random() * PERSONA_TYPES.length)];
     const intel = generateMarketIntel(INIT_PLAYER);
     set({
-      ceoBackground,
-      botPersona,
-      phase: "intel",
-      quarter: 1,
-      gameResult: "playing",
-      marketIntel: intel,
+      ceoBackground, botPersona, phase: "intel",
+      quarter: 1, gameResult: "playing", marketIntel: intel,
       capitalHistory: [{ quarter: 0, playerCapital: INIT_PLAYER.capital, botCapital: INIT_BOT.capital }],
-      player: { ...INIT_PLAYER },
-      draft: { ...INIT_DRAFT },
-      bot: { ...INIT_BOT },
+      player: { ...INIT_PLAYER }, draft: { ...INIT_DRAFT }, bot: { ...INIT_BOT },
       components: { ...INIT_COMPONENTS },
       executives: { cfo: false, coo: false },
       upgrades: { componentFactory: false, legendaryEngineer: false },
-      loans: { ...INIT_LOANS },
-      antitrust: { ...INIT_ANTITRUST },
-      hypeCampaign: null,
-      tradeBanActive: false,
-      prDisasterActive: false,
-      boardDirective: null,
-      lastResolution: null,
+      loans: { ...INIT_LOANS }, antitrust: { ...INIT_ANTITRUST },
+      hypeCampaign: null, tradeBanActive: false, prDisasterActive: false,
+      boardDirective: null, lastResolution: null,
+      blackMarketCards: [], equippedCards: [],
+      activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+      timeFreezeEvent: null, timerPaused: false, pendingTimeFreezeAt: null,
     });
   },
 
@@ -630,9 +472,39 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ phase: "boardmeeting", pendingDirectives: pickDirectives() });
   },
 
+  // v5.0: After selecting a directive, go to Black Market (not event)
   chooseBoardDirective: (d) => {
+    const shopCards = [...ACTION_CARDS]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, BLACK_MARKET_CARD_COUNT);
+    set({
+      boardDirective: d,
+      phase: "blackmarket",
+      blackMarketCards: shopCards,
+      equippedCards: [],
+      activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+    });
+  },
+
+  // v5.0: Buy a card from the Black Market (up to MAX_EQUIPPED_CARDS)
+  buyActionCard: (cardId) => {
+    const { player, blackMarketCards, equippedCards } = get();
+    if (equippedCards.length >= MAX_EQUIPPED_CARDS) return;
+    const card = blackMarketCards.find((c) => c.id === cardId);
+    if (!card) return;
+    if (player.capital < card.cost) return;
+    if (equippedCards.find((c) => c.id === cardId)) return;
+    const newCard: EquippedCard = { ...card, usedAt: null };
+    set({
+      player: { ...player, capital: player.capital - card.cost },
+      equippedCards: [...equippedCards, newCard],
+    });
+  },
+
+  // v5.0: Leave the Black Market and proceed to Event phase
+  proceedFromBlackMarket: () => {
     const event = pickRandom(EVENTS);
-    set({ boardDirective: d, phase: "event", currentEvent: event });
+    set({ phase: "event", currentEvent: event });
   },
 
   resolveEvent: (choiceId) => {
@@ -656,7 +528,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // v4.0: pass persona + current player price to bot schedule generator
+  // v5.0: Set pendingTimeFreezeAt (70% chance) to surprise the player mid-phase
   startActionPhase: () => {
     const { bot, quarter, botPersona, draft } = get();
     const schedule = generateBotSchedule(bot, quarter, botPersona, draft.price);
@@ -664,23 +536,30 @@ export const useGameStore = create<GameState>((set, get) => ({
       ? `mid_events.m${Math.floor(Math.random() * 7) + 1}`
       : null;
     const botLockTime = Math.floor(Math.random() * 16) + 15;
+    const pendingTimeFreezeAt = Math.random() < 0.70
+      ? Math.floor(Math.random() * 28) + 12   // triggers 12-40 seconds in
+      : null;
     set({
       phase: "action",
       quarterTimer: QUARTER_DURATION,
       timerRunning: true,
+      timerPaused: false,
       botSchedule: schedule,
       midQuarterEventKey: midKey,
       intelAlerts: [],
       playerReady: false,
       botLocked: false,
       botLockTime,
+      pendingTimeFreezeAt,
       bot: { ...bot, lastMoveLabel: null, lastMoveTime: null },
     });
   },
 
+  // v5.0: Handles time-freeze pause + botFrozenSecondsLeft countdown
   tickTimer: () => {
     const state = get();
     if (!state.timerRunning || state.phase !== "action") return;
+    if (state.timerPaused) return; // PAUSED — don't tick
 
     const newTimer = state.quarterTimer - 1;
     if (newTimer <= 0) {
@@ -690,6 +569,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     const elapsed = QUARTER_DURATION - newTimer;
+
+    // v5.0: Trigger time-freeze event
+    if (state.pendingTimeFreezeAt !== null && elapsed >= state.pendingTimeFreezeAt) {
+      const freezeEvent = pickRandom(TIME_FREEZE_EVENTS);
+      set({
+        quarterTimer: newTimer,
+        timerPaused: true,
+        timeFreezeEvent: freezeEvent,
+        pendingTimeFreezeAt: null,
+      });
+      return;
+    }
+
+    // v5.0: Decrement bot freeze visual countdown
+    let newEffects = state.activeCardEffects;
+    if (newEffects.botFrozenSecondsLeft > 0) {
+      newEffects = { ...newEffects, botFrozenSecondsLeft: newEffects.botFrozenSecondsLeft - 1 };
+    }
+
     let newBotLocked = state.botLocked;
     if (!state.botLocked && elapsed >= state.botLockTime) {
       newBotLocked = true;
@@ -700,7 +598,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    const pendingActions = state.botSchedule.filter((a) => !a.executed && a.triggerAtSecond <= elapsed);
+    // v5.0: Skip bot actions while frozen
+    const isBotFrozen = newEffects.botFrozenSecondsLeft > 0;
+    const pendingActions = isBotFrozen
+      ? []
+      : state.botSchedule.filter((a) => !a.executed && a.triggerAtSecond <= elapsed);
     let newBot = { ...state.bot };
     let newSchedule = [...state.botSchedule];
     const newAlerts: IntelAlert[] = [];
@@ -719,9 +621,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           : `INTEL: ${action.label}`;
         newAlerts.push({
           id: `alert-${Date.now()}-${action.triggerAtSecond}`,
-          message: msg,
-          timestamp: Date.now(),
-          type: action.type,
+          message: msg, timestamp: Date.now(), type: action.type,
         });
       }
     }
@@ -731,7 +631,55 @@ export const useGameStore = create<GameState>((set, get) => ({
       bot: newBot,
       botSchedule: newSchedule,
       botLocked: newBotLocked,
+      activeCardEffects: newEffects,
       intelAlerts: [...state.intelAlerts, ...newAlerts].slice(-6),
+    });
+  },
+
+  // v5.0: Activate an equipped card during the 60-second phase
+  useActionCard: (cardId) => {
+    const state = get();
+    if (state.phase !== "action") return;
+    const card = state.equippedCards.find((c) => c.id === cardId);
+    if (!card || card.usedAt !== null) return;
+    const e = card.effect;
+    const cur = state.activeCardEffects;
+    const newEffects: ActiveCardEffects = {
+      botCapacityMult:      cur.botCapacityMult * (e.botCapacityMult ?? 1.0),
+      botBrandDelta:        cur.botBrandDelta + (e.botBrandDelta ?? 0),
+      playerDemandMult:     cur.playerDemandMult * (e.playerDemandMult ?? 1.0),
+      playerTechBonus:      cur.playerTechBonus + (e.playerTechBonus ?? 0),
+      playerBrandBonus:     cur.playerBrandBonus + (e.playerBrandBonus ?? 0),
+      revealBotExact:       cur.revealBotExact || (e.revealBotExact ?? false),
+      botFrozenSecondsLeft: cur.botFrozenSecondsLeft + (e.botFreezeSeconds ?? 0),
+      cyberShield:          cur.cyberShield || (e.cyberShield ?? false),
+    };
+    const newEquipped = state.equippedCards.map((c) =>
+      c.id === cardId ? { ...c, usedAt: state.quarterTimer } : c
+    );
+    set({ equippedCards: newEquipped, activeCardEffects: newEffects });
+  },
+
+  // v5.0: Resolve a time-freeze mini-event, apply its effect, resume timer
+  resolveTimeFreezeEvent: (choiceId) => {
+    const state = get();
+    if (!state.timeFreezeEvent) return;
+    const choice = state.timeFreezeEvent.choices.find((c) => c.id === choiceId);
+    if (!choice) return;
+    const e = choice.effect;
+    const newEffects = { ...state.activeCardEffects };
+    if (e.playerDemandMult) newEffects.playerDemandMult *= e.playerDemandMult;
+    set({
+      player: {
+        ...state.player,
+        capital:         clamp(state.player.capital + (e.capital || 0), 0, Infinity),
+        techLevel:       clamp(state.player.techLevel + (e.techLevel || 0), 1, 10),
+        morale:          clamp(state.player.morale + (e.morale || 0), 0, 100),
+        brandPerception: clamp(state.player.brandPerception + (e.brandPerception || 0), 0, 100),
+      },
+      activeCardEffects: newEffects,
+      timeFreezeEvent: null,
+      timerPaused: false,
     });
   },
 
@@ -752,41 +700,40 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  // ===== LOCK AND RESOLVE v4.0 =====
+  // ===== LOCK AND RESOLVE v5.0 =====
   lockAndResolve: () => {
     const {
       player, draft, bot, executives, upgrades, loans, sabotage,
       components, boardDirective, quarter, antitrust, capitalHistory,
-      ceoBackground, hypeCampaign, tradeBanActive, prDisasterActive, botPersona,
+      ceoBackground, hypeCampaign, tradeBanActive, prDisasterActive,
+      botPersona, activeCardEffects,
     } = get();
-
     if (!ceoBackground) return;
 
-    // === Core resolution ===
+    // v5.0: Cyber Shield blocks Trade Ban and PR Disaster
+    const shielded = activeCardEffects.cyberShield;
+    const effectiveTradeBan    = tradeBanActive && !shielded;
+    const effectivePrDisaster  = prDisasterActive && !shielded;
+
     const rawResult = resolveQuarter(
       player, draft, bot, executives, upgrades, loans, sabotage,
       components, boardDirective, quarter, ceoBackground,
       !!(hypeCampaign?.active && !hypeCampaign?.fulfilled),
-      tradeBanActive,
-      prDisasterActive,
+      effectiveTradeBan, effectivePrDisaster, activeCardEffects,
     );
 
-    // === Bot Events ===
+    // Bot Events
     let botEventLabel: string | null = null;
     let botCapitalDelta = 0;
-    const botEventRoll = Math.random();
-    if (botEventRoll < 0.25) {
-      const ev = pickRandom(BOT_POSITIVE_EVENTS);
-      botEventLabel = ev.label;
-      botCapitalDelta = ev.capitalDelta;
-    } else if (botEventRoll < 0.42) {
-      const ev = pickRandom(BOT_NEGATIVE_EVENTS);
-      botEventLabel = ev.label;
-      botCapitalDelta = ev.capitalDelta;
-    }
+    const roll = Math.random();
+    if (roll < 0.25)       { const ev = pickRandom(BOT_POSITIVE_EVENTS); botEventLabel = ev.label; botCapitalDelta = ev.capitalDelta; }
+    else if (roll < 0.42)  { const ev = pickRandom(BOT_NEGATIVE_EVENTS); botEventLabel = ev.label; botCapitalDelta = ev.capitalDelta; }
 
-    // === Bot Auto-Upgrade (Tech Premium gets 2 upgrades per quarter) ===
-    const maxBotUpgrades = botPersona === "tech_premium" ? 2 : 1;
+    // Bot Auto-Upgrade (uses persona config from botPersonas.ts)
+    const personaMeta = botPersona ? BOT_PERSONA_META[botPersona] : null;
+    const maxBotUpgrades = personaMeta?.behavior.maxUpgradesPerQuarter ?? 1;
+    const techGrowthInterval = personaMeta?.behavior.techGrowthInterval ?? 4;
+
     const newBotEcotech = (bot.ecotech || 0) + 2 + Math.floor(bot.techLevel / 3);
     const botComponents = { ...bot.components };
     let spentEco = newBotEcotech;
@@ -804,11 +751,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    // Bot tech growth (Tech Premium grows faster)
-    const botTechGrowth = botPersona === "tech_premium"
-      ? (quarter % 2 === 0 ? 1 : 0)
-      : (quarter % 4 === 0 ? 1 : 0);
-
+    const botTechGrowth = quarter % techGrowthInterval === 0 ? 1 : 0;
     const newBotCapital = clamp(bot.capital + rawResult.botProfit + botCapitalDelta, 0, Infinity);
     const newBot: BotState = {
       ...bot,
@@ -819,7 +762,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       techLevel: Math.min(bot.techLevel + botTechGrowth, 10),
     };
 
-    // === Antitrust ===
+    // Antitrust
     let newAntitrust = { ...antitrust };
     let antitrustFine = 0;
     if (rawResult.newPlayerMarketShare > 60) {
@@ -834,44 +777,36 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (newAntitrust.playerBlocked && newAntitrust.playerBlockedQuartersLeft > 0) {
       newAntitrust.playerBlockedQuartersLeft--;
-      if (newAntitrust.playerBlockedQuartersLeft <= 0) {
-        newAntitrust.playerBlocked = false;
-      }
+      if (newAntitrust.playerBlockedQuartersLeft <= 0) newAntitrust.playerBlocked = false;
     }
 
-    // === Loan Update ===
+    // Loan
     let newLoans = { ...loans };
     if (loans.quartersRemaining > 0) {
       newLoans.quartersRemaining--;
       newLoans.outstanding = Math.max(0, newLoans.outstanding - newLoans.repaymentPerQuarter);
     }
 
-    // === Player Base Update ===
-    let newPlayerCapital = clamp(
-      player.capital + rawResult.capitalChange - antitrustFine,
-      0, Infinity
-    );
+    // Player update (v5.0: playerBrandBonus from action cards)
     let newPlayer: PlayerMetrics = {
-      capital: newPlayerCapital,
-      morale: clamp(player.morale + rawResult.moraleChange, 0, 100),
-      techLevel: clamp(player.techLevel + rawResult.techGrowth, 1, 10),
-      marketShare: rawResult.newPlayerMarketShare,
-      intelPoints: clamp(player.intelPoints - draft.intelAllocation + 1, 0, 20),
-      brandPerception: clamp(player.brandPerception + rawResult.brandChange, 0, 100),
-      ecotech: player.ecotech + rawResult.ecotechEarned,
+      capital:         clamp(player.capital + rawResult.capitalChange - antitrustFine, 0, Infinity),
+      morale:          clamp(player.morale + rawResult.moraleChange, 0, 100),
+      techLevel:       clamp(player.techLevel + rawResult.techGrowth, 1, 10),
+      marketShare:     rawResult.newPlayerMarketShare,
+      intelPoints:     clamp(player.intelPoints - draft.intelAllocation + 1, 0, 20),
+      brandPerception: clamp(player.brandPerception + rawResult.brandChange + activeCardEffects.playerBrandBonus, 0, 100),
+      ecotech:         player.ecotech + rawResult.ecotechEarned,
     };
 
-    // === v4.0: Dark Tactics Risk Rolls ===
-    let newTradeBanActive = false;   // reset from previous quarter
-    let newPrDisasterActive = false; // reset from previous quarter
+    // Dark Tactics
+    let newTradeBanActive = false;
+    let newPrDisasterActive = false;
     let darkTacticsCaught = false;
     let darkTacticsLabel: string | null = null;
 
-    // Planned Obsolescence: 15% chance of getting caught
     if (boardDirective === "planned_obsolescence" && Math.random() < 0.15) {
       darkTacticsCaught = true;
       darkTacticsLabel = "summaries.planned_obs_caught";
-      // Immediate penalties
       newPlayer = {
         ...newPlayer,
         capital:     clamp(newPlayer.capital - 10_000_000, 0, Infinity),
@@ -879,112 +814,96 @@ export const useGameStore = create<GameState>((set, get) => ({
         morale:      clamp(newPlayer.morale - 30, 0, 100),
       };
     }
-
-    // Industrial Espionage: 20% chance of trade ban next quarter
     if (boardDirective === "industrial_espionage" && Math.random() < 0.20) {
       darkTacticsCaught = true;
-      newTradeBanActive = true;
+      if (!shielded) newTradeBanActive = true;
       darkTacticsLabel = "summaries.espionage_banned";
     }
-
-    // Apply PR Disaster fine if it was active this quarter
-    if (prDisasterActive) {
-      newPlayer = {
-        ...newPlayer,
-        capital: clamp(newPlayer.capital - 10_000_000, 0, Infinity),
-      };
+    if (effectivePrDisaster) {
+      newPlayer = { ...newPlayer, capital: clamp(newPlayer.capital - 10_000_000, 0, Infinity) };
     }
 
-    // === v4.0: Hype Campaign Check ===
+    // Hype Campaign
     let newHypeCampaign: HypeCampaignState | null = hypeCampaign ? { ...hypeCampaign } : null;
     let hypeFulfilled = false;
-
     if (hypeCampaign?.active && !hypeCampaign.fulfilled) {
       const compTotal = components.chip + components.battery + components.display + components.memory;
       const techImproved = newPlayer.techLevel > hypeCampaign.techLevelAtLaunch
         || compTotal > hypeCampaign.componentTotalAtLaunch;
-
       if (techImproved) {
         newHypeCampaign = { ...hypeCampaign, fulfilled: true };
         hypeFulfilled = true;
       } else if (quarter >= hypeCampaign.deadline) {
-        newPrDisasterActive = true; // next quarter gets PR disaster
+        newPrDisasterActive = true;
         newHypeCampaign = null;
       }
     }
 
-    // === v4.0: Green Initiative free battery upgrade ===
+    // Green Initiative free battery
     let newComponents = { ...components };
     if (boardDirective === "green_initiative" && components.battery < 2) {
       newComponents = { ...newComponents, battery: 2 };
     }
 
-    // === Capital History ===
-    const newHistory: CapitalHistoryEntry[] = [
+    const newHistory = [
       ...capitalHistory,
       { quarter, playerCapital: newPlayer.capital, botCapital: newBotCapital },
     ];
 
-    // === Summary Override ===
     let finalSummaryKey = rawResult.summaryKey;
-    if (antitrustFine > 0)         finalSummaryKey = "summaries.antitrust";
-    else if (darkTacticsLabel)     finalSummaryKey = darkTacticsLabel;
-    else if (hypeFulfilled)        finalSummaryKey = "summaries.hype_fulfilled";
-    else if (prDisasterActive)     finalSummaryKey = "summaries.hype_disaster";
+    if (antitrustFine > 0)        finalSummaryKey = "summaries.antitrust";
+    else if (darkTacticsLabel)    finalSummaryKey = darkTacticsLabel;
+    else if (hypeFulfilled)       finalSummaryKey = "summaries.hype_fulfilled";
+    else if (effectivePrDisaster) finalSummaryKey = "summaries.hype_disaster";
 
     const finalResult: ResolutionResult = {
       ...rawResult,
-      botEventLabel,
-      summaryKey: finalSummaryKey,
-      darkTacticsCaught,
-      darkTacticsLabel,
-      tradeBanApplied: tradeBanActive,
-      prDisasterApplied: prDisasterActive,
+      botEventLabel, summaryKey: finalSummaryKey,
+      darkTacticsCaught, darkTacticsLabel,
+      tradeBanApplied: effectiveTradeBan,
+      prDisasterApplied: effectivePrDisaster,
       hypeFulfilled,
     };
 
-    // === Win Check ===
     let gameResult: GameResult = "playing";
-    if (newPlayer.capital <= 0) gameResult = "bankrupt";
+    if (newPlayer.capital <= 0)                     gameResult = "bankrupt";
     else if (newPlayer.capital >= INSTANT_WIN_CAPITAL) gameResult = "won_instant";
 
     set({
       phase: "resolution",
-      player: newPlayer,
-      bot: newBot,
-      loans: newLoans,
-      antitrust: newAntitrust,
-      capitalHistory: newHistory,
-      lastResolution: finalResult,
-      gameResult,
+      player: newPlayer, bot: newBot, loans: newLoans,
+      antitrust: newAntitrust, capitalHistory: newHistory,
+      lastResolution: finalResult, gameResult,
       components: newComponents,
       sabotage: { ...get().sabotage, ddosPending: false, prPending: false },
       tradeBanActive: newTradeBanActive,
       prDisasterActive: newPrDisasterActive,
       hypeCampaign: newHypeCampaign,
+      // v5.0: Clear for next quarter
+      equippedCards: [], activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+      timeFreezeEvent: null, timerPaused: false, blackMarketCards: [],
     });
   },
 
   nextQuarter: () => {
     const { quarter, player, bot, gameResult } = get();
-    if (gameResult !== "playing") {
-      set({ phase: "gameover" });
-      return;
-    }
+    if (gameResult !== "playing") { set({ phase: "gameover" }); return; }
     if (quarter >= MAX_QUARTERS) {
       const finalResult: GameResult = player.capital > bot.capital ? "won_timeout" : "won_timeout_lost";
       set({ phase: "gameover", gameResult: finalResult });
       return;
     }
-    const nextQ = quarter + 1;
     const intel = generateMarketIntel(player);
     set({
       phase: "intel",
-      quarter: nextQ,
+      quarter: quarter + 1,
       marketIntel: intel,
       lastResolution: null,
       boardDirective: null,
       sabotage: { ddosPending: false, prPending: false, cooldown: false },
+      equippedCards: [], activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+      timeFreezeEvent: null, timerPaused: false,
+      pendingTimeFreezeAt: null, blackMarketCards: [],
     });
   },
 
@@ -992,9 +911,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   hireExecutive: (type) => {
     const { player, executives, phase, antitrust } = get();
-    if (phase === "action") return;
-    if (antitrust.playerBlocked) return;
-    if (executives[type]) return;
+    if (phase === "action" || antitrust.playerBlocked || executives[type]) return;
     const cost = 40_000_000;
     if (player.capital < cost) return;
     set({ player: { ...player, capital: player.capital - cost }, executives: { ...executives, [type]: true } });
@@ -1002,8 +919,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   purchaseUpgrade: (type) => {
     const { player, upgrades, phase, antitrust } = get();
-    if (phase === "action") return;
-    if (upgrades[type]) return;
+    if (phase === "action" || upgrades[type]) return;
     if (type === "componentFactory" && antitrust.playerBlocked) return;
     const costs: Record<string, number> = { componentFactory: 150_000_000, legendaryEngineer: 80_000_000 };
     const cost = costs[type];
@@ -1017,30 +933,22 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   takeOutLoan: () => {
     const { player, loans, executives, phase } = get();
-    if (phase === "action") return;
-    if (loans.quartersRemaining > 0) return;
-    if (loans.totalLoansEver >= 3) return;
+    if (phase === "action" || loans.quartersRemaining > 0 || loans.totalLoansEver >= 3) return;
     const repayment = executives.cfo ? 25_000_000 : 30_000_000;
     set({
       player: { ...player, capital: player.capital + 100_000_000 },
-      loans: {
-        outstanding: 100_000_000,
-        quartersRemaining: 4,
-        repaymentPerQuarter: repayment,
-        totalLoansEver: loans.totalLoansEver + 1,
-      },
+      loans: { outstanding: 100_000_000, quartersRemaining: 4, repaymentPerQuarter: repayment, totalLoansEver: loans.totalLoansEver + 1 },
     });
   },
 
   acceptBiddingWar: () => {
     const { player, upgrades } = get();
-    const extra = 20_000_000;
-    if (player.capital < extra) {
+    if (player.capital < 20_000_000) {
       set({ biddingWar: { active: false, engineerSigned: false } });
       return;
     }
     set({
-      player: { ...player, capital: player.capital - extra },
+      player: { ...player, capital: player.capital - 20_000_000 },
       upgrades: { ...upgrades, legendaryEngineer: true },
       biddingWar: { active: false, engineerSigned: true },
     });
@@ -1053,8 +961,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   launchSabotage: (type) => {
     const { player, sabotage, phase, antitrust } = get();
-    if (phase === "action" || sabotage.cooldown) return;
-    if (antitrust.playerBlocked) return;
+    if (phase === "action" || sabotage.cooldown || antitrust.playerBlocked) return;
     if (type === "ddos") {
       if (player.capital < 10_000_000 || player.intelPoints < 3) return;
       set({ player: { ...player, capital: player.capital - 10_000_000, intelPoints: player.intelPoints - 3 }, sabotage: { ...sabotage, ddosPending: true, cooldown: true } });
@@ -1064,7 +971,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  // v4.0: Apply ecotechCostModifier to upgrade costs
   upgradeComponent: (comp) => {
     const { player, components, phase, ceoBackground } = get();
     if (phase === "action") return;
@@ -1075,13 +981,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const costMod = ceoBackground?.ecotechCostModifier ?? 1.0;
     const actualCost = Math.ceil(baseCost * costMod);
     if (player.ecotech < actualCost) return;
-    set({
-      components: { ...components, [comp]: currentLevel + 1 },
-      player: { ...player, ecotech: player.ecotech - actualCost },
-    });
+    set({ components: { ...components, [comp]: currentLevel + 1 }, player: { ...player, ecotech: player.ecotech - actualCost } });
   },
 
-  // v4.0: Hype Campaign — costs $5M, boosts demand +40%, must upgrade tech by deadline
   launchHypeCampaign: () => {
     const { player, quarter, components, hypeCampaign, phase } = get();
     if (phase !== "action") return;
@@ -1090,50 +992,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     const compTotal = components.chip + components.battery + components.display + components.memory;
     set({
       player: { ...player, capital: player.capital - 5_000_000 },
-      hypeCampaign: {
-        active: true,
-        deadline: quarter + 2,
-        techLevelAtLaunch: player.techLevel,
-        componentTotalAtLaunch: compTotal,
-        fulfilled: false,
-      },
+      hypeCampaign: { active: true, deadline: quarter + 2, techLevelAtLaunch: player.techLevel, componentTotalAtLaunch: compTotal, fulfilled: false },
     });
   },
 
   resetGame: () => {
     set({
-      phase: "ceoselect",
-      quarter: 1,
-      gameResult: "playing",
-      player: { ...INIT_PLAYER },
-      draft: { ...INIT_DRAFT },
-      ceoBackground: null,
-      botPersona: null,
-      bot: { ...INIT_BOT },
-      quarterTimer: QUARTER_DURATION,
-      timerRunning: false,
-      playerReady: false,
-      botLocked: false,
-      botLockTime: 20,
-      currentEvent: null,
-      marketIntel: generateMarketIntel(INIT_PLAYER),
-      intelAlerts: [],
-      midQuarterEventKey: null,
-      botSchedule: [],
+      phase: "ceoselect", quarter: 1, gameResult: "playing",
+      player: { ...INIT_PLAYER }, draft: { ...INIT_DRAFT },
+      ceoBackground: null, botPersona: null, bot: { ...INIT_BOT },
+      quarterTimer: QUARTER_DURATION, timerRunning: false,
+      timerPaused: false, pendingTimeFreezeAt: null,
+      playerReady: false, botLocked: false, botLockTime: 20,
+      currentEvent: null, marketIntel: generateMarketIntel(INIT_PLAYER),
+      intelAlerts: [], midQuarterEventKey: null, botSchedule: [],
       executives: { cfo: false, coo: false },
       upgrades: { componentFactory: false, legendaryEngineer: false },
-      loans: { ...INIT_LOANS },
-      biddingWar: null,
+      loans: { ...INIT_LOANS }, biddingWar: null,
       sabotage: { ddosPending: false, prPending: false, cooldown: false },
-      components: { ...INIT_COMPONENTS },
-      boardDirective: null,
-      pendingDirectives: [],
-      antitrust: { ...INIT_ANTITRUST },
+      components: { ...INIT_COMPONENTS }, boardDirective: null,
+      pendingDirectives: [], antitrust: { ...INIT_ANTITRUST },
       capitalHistory: [{ quarter: 0, playerCapital: INIT_PLAYER.capital, botCapital: INIT_BOT.capital }],
-      lastResolution: null,
-      hypeCampaign: null,
-      tradeBanActive: false,
-      prDisasterActive: false,
+      lastResolution: null, hypeCampaign: null,
+      tradeBanActive: false, prDisasterActive: false,
+      blackMarketCards: [], equippedCards: [],
+      activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
+      timeFreezeEvent: null,
     });
   },
 }));

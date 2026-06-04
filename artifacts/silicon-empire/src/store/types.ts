@@ -1,9 +1,10 @@
-// ===== SILICON EMPIRE v4 — Type Definitions =====
+// ===== SILICON EMPIRE v5 — Type Definitions =====
 
 export type GamePhase =
   | "ceoselect"
   | "intel"
   | "boardmeeting"
+  | "blackmarket"   // v5.0: Black Market (after board meeting)
   | "event"
   | "action"
   | "resolution"
@@ -206,6 +207,29 @@ export interface ResolutionResult {
   prDisasterApplied: boolean;
   hypeFulfilled: boolean;
 }
+
+// v5.0: Active effects from equipped Action Cards (accumulated this quarter)
+export interface ActiveCardEffects {
+  botCapacityMult: number;      // accumulated product (1.0 = no effect)
+  botBrandDelta: number;        // accumulated sum (0 = no effect)
+  playerDemandMult: number;     // accumulated product (1.0 = no effect)
+  playerTechBonus: number;      // accumulated sum (0 = no effect)
+  playerBrandBonus: number;     // accumulated sum (0 = no effect)
+  revealBotExact: boolean;      // any card granting this
+  botFrozenSecondsLeft: number; // countdown for visual freeze display
+  cyberShield: boolean;         // blocks Trade Ban / PR Disaster
+}
+
+export const INIT_ACTIVE_EFFECTS: ActiveCardEffects = {
+  botCapacityMult: 1.0,
+  botBrandDelta: 0,
+  playerDemandMult: 1.0,
+  playerTechBonus: 0,
+  playerBrandBonus: 0,
+  revealBotExact: false,
+  botFrozenSecondsLeft: 0,
+  cyberShield: false,
+};
 
 export interface MarketIntel {
   demandTrend: "rising" | "stable" | "falling";

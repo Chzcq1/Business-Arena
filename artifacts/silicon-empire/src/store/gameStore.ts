@@ -219,6 +219,14 @@ function resolveQuarter(
     BRAND_SEG  * (1 - brandShare) * botBrandMod
   );
 
+  // v6.0: Hard Price Cap — defined FIRST before playerSales (fix TDZ bug)
+  const priceRatio = bot.price > 0 ? draft.price / bot.price : 1;
+  const hardPricePenaltyApplied = !tradeBanActive && priceRatio > 1.25;
+  const brandBurnApplied = !tradeBanActive && priceRatio > 1.30;
+  const finalPlayerRawDemand = hardPricePenaltyApplied
+    ? Math.floor(playerRawDemand * 0.10)
+    : playerRawDemand;
+
   const playerSales = Math.min(playerCapacity, finalPlayerRawDemand);
   const botSales    = Math.min(botCapacity, botRawDemand);
 
@@ -226,14 +234,6 @@ function resolveQuarter(
   const segBudget = Math.floor(playerSales * (playerBudgetDemand / demandTotal));
   const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
   const segBrand  = Math.max(0, playerSales - segBudget - segTech);
-
-  // v6.0: Hard Price Cap — if player price > 25% above bot, demand collapses to 10%
-  const priceRatio = bot.price > 0 ? draft.price / bot.price : 1;
-  const hardPricePenaltyApplied = !tradeBanActive && priceRatio > 1.25;
-  const brandBurnApplied = !tradeBanActive && priceRatio > 1.30;
-  const finalPlayerRawDemand = hardPricePenaltyApplied
-    ? Math.floor(playerRawDemand * 0.10)
-    : playerRawDemand;
 
   const playerUnsold = Math.max(0, playerCapacity - finalPlayerRawDemand);
   // v6.0: CFO nerf — cap E-Waste reduction to 15% (was 30%). 2× fine multiplier (was 1.5×)

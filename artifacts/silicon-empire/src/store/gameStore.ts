@@ -10,7 +10,8 @@ import type {
   CapitalHistoryEntry, CEOBackgroundType, CEOBackground,
   BotPersonaType, HypeCampaignState, ActiveCardEffects,
 } from "./types";
-import { INIT_ACTIVE_EFFECTS } from "./types";
+import { INIT_ACTIVE_EFFECTS, INIT_CEO_SKILL } from "./types";
+import type { CEOActiveSkill, CEOSkillEffectType } from "./types";
 
 // v5.0: All game data lives in src/game-data/ — easy to edit, no coding required
 import { EVENTS, BOT_POSITIVE_EVENTS, BOT_NEGATIVE_EVENTS, TIME_FREEZE_EVENTS } from "@/game-data/eventsData";
@@ -145,7 +146,9 @@ function resolveQuarter(
   if (boardDirective === "aggressive_rd")      costMultiplier *= 1.10;
   if (boardDirective === "cost_cutting")       costMultiplier *= 0.85;
   if (boardDirective === "supply_chain_deal")  costMultiplier *= 0.85;
-  const effectiveUnitCost = Math.round(baseCost * costMultiplier);
+  // v6.0: Operator Emergency Cut active skill — reduce unit cost by 20% this quarter
+  const emergencyCutMod = (draft as PlayerDraft & { _emergencyCutCostMod?: number })._emergencyCutCostMod ?? 1.0;
+  const effectiveUnitCost = Math.round(baseCost * costMultiplier * emergencyCutMod);
 
   // Player capacity
   let playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
@@ -382,9 +385,13 @@ interface GameState {
   // v5.0 Time-Freeze Events
   timeFreezeEvent: TimeFreezeEventData | null;
 
+  // v6.0 CEO Active Skill
+  ceoActiveSkill: CEOActiveSkill;
+
   // ===== ACTIONS =====
   startGame: () => void;
   selectCEOBackground: (type: CEOBackgroundType) => void;
+  useCEOSkill: () => void;
   advanceToBoardMeeting: () => void;
   chooseBoardDirective: (d: BoardDirective) => void;
   buyActionCard: (cardId: string) => void;       // v5.0
@@ -460,6 +467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   equippedCards: [],
   activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
   timeFreezeEvent: null,
+  ceoActiveSkill: { ...INIT_CEO_SKILL },
 
   // ===== ACTIONS =====
 
@@ -557,6 +565,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pendingTimeFreezeAt = Math.random() < 0.70
       ? Math.floor(Math.random() * 28) + 12   // triggers 12-40 seconds in
       : null;
+    const { ceoActiveSkill } = get();
     set({
       phase: "action",
       quarterTimer: QUARTER_DURATION,
@@ -570,7 +579,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       botLockTime,
       pendingTimeFreezeAt,
       bot: { ...bot, lastMoveLabel: null, lastMoveTime: null },
+      // v6.0: reset per-quarter skill usage flag
+      ceoActiveSkill: { ...ceoActiveSkill, usedThisQuarter: false, effectType: null },
     });
+  },
+
+  // v6.0: CEO Active Skill — 3 charges per game
+  useCEOSkill: () => {
+    const { ceoBackground, ceoActiveSkill, quarter, timerRunning, timerPaused } = get();
+    if (!ceoBackground) return;
+    if (ceoActiveSkill.chargesLeft <= 0) return;
+    if (ceoActiveSkill.usedThisQuarter) return;
+    if (!timerRunning || timerPaused) return;
+
+    let effectType: CEOSkillEffectType;
+    if (ceoBackground.type === "visionary") effectType = "tech_surge";
+    else if (ceoBackground.type === "marketer") effectType = "flash_pr";
+    else effectType = "emergency_cut";
+
+    set((state) => ({
+      ceoActiveSkill: {
+        chargesLeft: state.ceoActiveSkill.chargesLeft - 1,
+        usedThisQuarter: true,
+        effectType,
+      },
+      // Immediate brand boost for Marketer
+      player: ceoBackground.type === "marketer"
+        ? { ...state.player, brandPerception: Math.min(100, state.player.brandPerception + 8) }
+        : state.player,
+    }));
   },
 
   // v5.0: Handles time-freeze pause + botFrozenSecondsLeft countdown
@@ -724,7 +761,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       player, draft, bot, executives, upgrades, loans, sabotage,
       components, boardDirective, quarter, antitrust, capitalHistory,
       ceoBackground, hypeCampaign, tradeBanActive, prDisasterActive,
-      botPersona, activeCardEffects,
+      botPersona, activeCardEffects, ceoActiveSkill,
     } = get();
     if (!ceoBackground) return;
 
@@ -733,11 +770,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     const effectiveTradeBan    = tradeBanActive && !shielded;
     const effectivePrDisaster  = prDisasterActive && !shielded;
 
+    // v6.0: CEO Active Skill — apply effects this quarter
+    let skillCardEffects = { ...activeCardEffects };
+    if (ceoActiveSkill.usedThisQuarter && ceoActiveSkill.effectType) {
+      if (ceoActiveSkill.effectType === "tech_surge") {
+        skillCardEffects = { ...skillCardEffects, playerDemandMult: skillCardEffects.playerDemandMult * 1.20 };
+      } else if (ceoActiveSkill.effectType === "flash_pr") {
+        skillCardEffects = { ...skillCardEffects, playerDemandMult: skillCardEffects.playerDemandMult * 1.15 };
+      } else if (ceoActiveSkill.effectType === "emergency_cut") {
+        // cost reduction handled via a modified draft passed to resolveQuarter below
+      }
+    }
+    const emergencyCutActive = ceoActiveSkill.usedThisQuarter && ceoActiveSkill.effectType === "emergency_cut";
+    const resolvedDraft = emergencyCutActive
+      ? { ...draft, _emergencyCutCostMod: 0.80 }
+      : draft;
+
     const rawResult = resolveQuarter(
       player, draft, bot, executives, upgrades, loans, sabotage,
       components, boardDirective, quarter, ceoBackground,
       !!(hypeCampaign?.active && !hypeCampaign?.fulfilled),
-      effectiveTradeBan, effectivePrDisaster, activeCardEffects,
+      effectiveTradeBan, effectivePrDisaster, skillCardEffects,
     );
 
     // Bot Events
@@ -1037,6 +1090,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       blackMarketCards: [], equippedCards: [],
       activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
       timeFreezeEvent: null,
+      ceoActiveSkill: { ...INIT_CEO_SKILL },
     });
   },
 }));

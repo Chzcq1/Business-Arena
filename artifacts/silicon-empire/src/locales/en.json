@@ -238,6 +238,37 @@
     "hypeDeadline": "Deliver by Q",
     "hypeInsufficientFunds": "Need $5M to launch"
   },
+  "ceo_skill": {
+    "chargesLeft": "Charges Left",
+    "usedThisQuarter": "SKILL USED",
+    "noCharges": "No Charges",
+    "activate": "ACTIVATE",
+    "sectionLabel": "CEO ACTIVE SKILL",
+    "visionary_name": "Tech Surge",
+    "visionary_desc": "Demand +20% this quarter — your tech edge floods the market",
+    "marketer_name": "Flash PR",
+    "marketer_desc": "+8 Brand now + Demand +15% — one viral moment changes everything",
+    "operator_name": "Emergency Cut",
+    "operator_desc": "Unit cost −20% this quarter — ruthless factory optimization"
+  },
+  "war_room": {
+    "title": "WAR ROOM",
+    "subtitle": "Q{{q}} · Set strategy before the clock expires",
+    "strategyLabel": "STRATEGY",
+    "botIntelLabel": "ENEMY INTEL",
+    "botCapital": "Bot Capital",
+    "botTech": "Bot Tech Lvl",
+    "botBrand": "Bot Brand",
+    "botLastProfit": "Bot Last Profit",
+    "botTrend": "Trend",
+    "revealedLabel": "CLASSIFIED — Intel Active",
+    "hiddenLabel": "CLASSIFIED",
+    "priceGap": "vs Bot Price",
+    "priceGapDanger": "⚠ +{{pct}}% over bot — demand at risk!",
+    "priceGapOk": "✓ +{{pct}}% premium",
+    "priceGapUnder": "✓ {{pct}}% below bot",
+    "activeSkillSection": "CEO ACTIVE SKILL"
+  },
   "resolution_phase": {
     "title": "Quarter Resolution",
     "subtitle": "Final results locked in",

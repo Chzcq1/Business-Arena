@@ -238,6 +238,37 @@
     "hypeDeadline": "ส่งมอบก่อน Q",
     "hypeInsufficientFunds": "ต้องการ $5M เพื่อเริ่ม"
   },
+  "ceo_skill": {
+    "chargesLeft": "ชาร์จที่เหลือ",
+    "usedThisQuarter": "ใช้สกิลแล้ว",
+    "noCharges": "หมดชาร์จ",
+    "activate": "เปิดใช้งาน",
+    "sectionLabel": "สกิล CEO",
+    "visionary_name": "คลื่นเทค",
+    "visionary_desc": "ดีมานด์ +20% ไตรมาสนี้ — เทคโนโลยีล้ำกว่าโจมตีตลาด",
+    "marketer_name": "พีอาร์สายฟ้า",
+    "marketer_desc": "+8 Brand ทันที + ดีมานด์ +15% — โมเมนต์ไวรัลเปลี่ยนเกม",
+    "operator_name": "ตัดต้นทุนฉุกเฉิน",
+    "operator_desc": "ต้นทุนต่อหน่วย −20% ไตรมาสนี้ — ปรับโรงงานแบบโหด"
+  },
+  "war_room": {
+    "title": "ห้องปฏิบัติการ",
+    "subtitle": "Q{{q}} · ตั้งกลยุทธ์ก่อนนาฬิกาหมด",
+    "strategyLabel": "กลยุทธ์",
+    "botIntelLabel": "ข่าวกรองคู่แข่ง",
+    "botCapital": "ทุนบอท",
+    "botTech": "เทคบอท",
+    "botBrand": "แบรนด์บอท",
+    "botLastProfit": "กำไรบอทล่าสุด",
+    "botTrend": "แนวโน้ม",
+    "revealedLabel": "ลับ — ข่าวกรองเปิด",
+    "hiddenLabel": "ลับ",
+    "priceGap": "vs ราคาบอท",
+    "priceGapDanger": "⚠ +{{pct}}% เกินบอท — ดีมานด์อันตราย!",
+    "priceGapOk": "✓ +{{pct}}% พรีเมียม",
+    "priceGapUnder": "✓ {{pct}}% ต่ำกว่าบอท",
+    "activeSkillSection": "สกิล CEO"
+  },
   "resolution_phase": {
     "title": "สรุปผลไตรมาส",
     "subtitle": "ผลลัพธ์สุดท้ายถูกล็อคแล้ว",

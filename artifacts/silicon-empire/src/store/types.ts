@@ -249,3 +249,18 @@ export interface BotScheduledAction {
   type: "price" | "production" | "strategy";
   delta: Partial<BotState>;
 }
+
+// v6.0: CEO Active Skill
+export type CEOSkillEffectType = "tech_surge" | "flash_pr" | "emergency_cut";
+
+export interface CEOActiveSkill {
+  chargesLeft: number;          // 3 total per 16-quarter game
+  usedThisQuarter: boolean;     // reset each quarter in startActionPhase
+  effectType: CEOSkillEffectType | null; // which skill is active this quarter
+}
+
+export const INIT_CEO_SKILL: CEOActiveSkill = {
+  chargesLeft: 3,
+  usedThisQuarter: false,
+  effectType: null,
+};

@@ -1,5 +1,5 @@
 // ==========================================
-// 👤 CEO CLASSES — ข้อมูล CEO Class ทั้งหมด
+// 👤 CEO CLASSES v6.0 — Rebalanced
 // ==========================================
 //
 // ไฟล์นี้กำหนดคุณสมบัติของ CEO แต่ละ Class ที่กระทบการเล่น
@@ -42,35 +42,35 @@
 import type { CEOBackground, CEOBackgroundType } from "@/store/types";
 
 // ============================================================
-// ⚙️ CEO_BACKGROUNDS — แก้ตัวเลขได้ที่นี่
+// ⚙️ CEO_BACKGROUNDS v6.0 — Rebalanced for adaptive play
 // ============================================================
 export const CEO_BACKGROUNDS: Record<CEOBackgroundType, CEOBackground> = {
   visionary: {
     type: "visionary",
-    productionCostModifier: 1.15,  // ต้นทุนการผลิต +15% (แพงกว่า)
-    ecotechModifier: 1.0,
-    ecotechCostModifier: 0.80,     // อัพเกรด EcoTech ถูกลง 20%
+    productionCostModifier: 1.15,  // ต้นทุนผลิต +15% (ต้องจ่ายแพงกว่าเพื่อ R&D)
+    ecotechModifier: 1.25,         // v6.0: ได้ EcoTech +25% ทุกไตรมาส (was 1.0)
+    ecotechCostModifier: 0.65,     // v6.0: อัปเกรดถูกลง 35% (was 20%) — fix functional bug
     brandLoyalistBonus: 1.0,
     eWastePenaltyReduction: 1.0,
-    priceCeilingModifier: 1.0,
+    priceCeilingModifier: 1.10,    // v6.0: เพดานราคา +10% (นวัตกรรมตั้งราคาสูงได้กว่า)
   },
   marketer: {
     type: "marketer",
     productionCostModifier: 1.0,
     ecotechModifier: 1.0,
-    ecotechCostModifier: 1.20,     // อัพเกรด EcoTech แพงขึ้น 20%
-    brandLoyalistBonus: 1.15,      // Brand Loyalist segment +15%
+    ecotechCostModifier: 1.20,     // อัปเกรด EcoTech แพงขึ้น 20% (ไม่ถนัด tech)
+    brandLoyalistBonus: 1.20,      // v6.0: Brand Loyalist +20% (was 15%)
     eWastePenaltyReduction: 1.0,
-    priceCeilingModifier: 1.0,
+    priceCeilingModifier: 1.15,    // v6.0: เพดานราคา +15% (brand ทำให้ขายแพงได้)
   },
   operator: {
     type: "operator",
-    productionCostModifier: 0.85,  // ต้นทุนการผลิต -15% (ถูกกว่า)
+    productionCostModifier: 0.82,  // v6.0: ต้นทุนผลิต −18% (was −15%) — lean ops
     ecotechModifier: 1.0,
     ecotechCostModifier: 1.0,
-    brandLoyalistBonus: 1.0,
-    eWastePenaltyReduction: 0.50,  // ค่าปรับ E-Waste ลด 50%
-    priceCeilingModifier: 0.90,    // price ceiling ต่ำกว่า 10%
+    brandLoyalistBonus: 0.90,      // v6.0: Brand −10% (mass market, no premium image)
+    eWastePenaltyReduction: 0.25,  // v6.0: restore advantage — 3.0×0.25=0.75× (was 1.5×0.5=0.75× in v5)
+    priceCeilingModifier: 0.90,    // เพดานราคาต่ำ 10% (efficiency ≠ premium)
   },
 };
 

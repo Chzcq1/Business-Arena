@@ -62,8 +62,13 @@ function LevelBar({ level, colorClass }: { level: number; colorClass: string }) 
 
 export function ComponentLab() {
   const { t } = useT();
-  const { player, components, phase, upgradeComponent } = useGameStore();
+  const { player, components, phase, upgradeComponent, ceoBackground } = useGameStore();
   const locked = phase === "action";
+
+  // v6.0 fix: apply CEO ecotechCostModifier to display AND canAfford check
+  const costMod = ceoBackground?.ecotechCostModifier ?? 1.0;
+  const hasDiscount = costMod < 1.0;
+  const hasPenalty  = costMod > 1.0;
 
   const comps: (keyof ComponentsState)[] = ["chip", "battery", "display", "memory"];
 
@@ -77,10 +82,25 @@ export function ComponentLab() {
         <span className="text-base font-bold text-emerald-400">⚗ {player.ecotech} EcoTech</span>
       </div>
 
+      {/* CEO cost modifier badge */}
+      {(hasDiscount || hasPenalty) && (
+        <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+          hasDiscount
+            ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+            : "bg-red-500/10 border-red-500/30 text-red-400"
+        }`}>
+          {hasDiscount
+            ? `✓ CEO Bonus: upgrade costs −${Math.round((1 - costMod) * 100)}%`
+            : `✗ CEO Penalty: upgrade costs +${Math.round((costMod - 1) * 100)}%`}
+        </div>
+      )}
+
       {comps.map((comp) => {
         const level = components[comp];
         const isMax = level >= 5;
-        const nextCost = isMax ? 0 : (COMPONENT_UPGRADE_COSTS[comp][level + 1] ?? 0);
+        const baseCost = isMax ? 0 : (COMPONENT_UPGRADE_COSTS[comp][level + 1] ?? 0);
+        // Apply CEO discount/penalty to both display and canAfford
+        const nextCost = isMax ? 0 : Math.ceil(baseCost * costMod);
         const canAfford = player.ecotech >= nextCost;
         const colors = COMP_COLORS[comp];
 

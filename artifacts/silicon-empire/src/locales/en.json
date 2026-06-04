@@ -24,21 +24,21 @@
   "ceo_classes": {
     "visionary": {
       "title": "The Visionary",
-      "desc": "Bet the company on breakthrough R&D. Tech upgrades come cheap — but the factory floor costs more.",
-      "pro": "EcoTech upgrade costs −20%",
+      "desc": "Bet the company on breakthrough R&D. Tech upgrades are cheap and you earn more EcoTech — but the factory floor costs more.",
+      "pro": "EcoTech earned +25%/Q · Upgrade costs −35% · Price ceiling +10%",
       "con": "Production base cost +15%"
     },
     "marketer": {
       "title": "Marketing Tycoon",
-      "desc": "You sell dreams, not hardware. Brand loyalty beats specs when you control the narrative.",
-      "pro": "Brand Loyalists segment +15%",
+      "desc": "You sell dreams, not hardware. Brand loyalty and premium pricing beat specs when you control the narrative.",
+      "pro": "Brand Loyalists +20% · Price ceiling +15%",
       "con": "Tech upgrade costs +20%"
     },
     "operator": {
       "title": "Supply Chain Master",
-      "desc": "Ruthless efficiency. Lean operations, minimal waste — but the street won't pay a premium for 'efficient'.",
-      "pro": "Production cost −15% · E-Waste −50%",
-      "con": "Max price ceiling reduced"
+      "desc": "Ruthless efficiency. Lean production, near-zero waste — but the market won't pay premium for efficiency.",
+      "pro": "Production cost −18% · E-Waste penalty −75%",
+      "con": "Price ceiling −10% · Brand segment −10%"
     }
   },
   "bot_persona": {

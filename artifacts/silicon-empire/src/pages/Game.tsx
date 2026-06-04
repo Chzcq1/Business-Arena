@@ -11,8 +11,9 @@ import { EventPhase } from "@/components/EventPhase";
 import { ActionPhase } from "@/components/ActionPhase";
 import { ResolutionPhase } from "@/components/ResolutionPhase";
 import { GameOver } from "@/components/GameOver";
+import { HowToPlay } from "@/components/HowToPlay";
 import { CommandCenter } from "@/components/CommandCenter";
-import { Building2, Lock } from "lucide-react";
+import { Building2, Lock, BookOpen } from "lucide-react";
 
 // v5.0: Persona badge data sourced from botPersonas.ts values
 const PERSONA_BADGES: Record<string, { label: string; color: string; icon: string }> = {
@@ -71,7 +72,7 @@ function PhaseTicker() {
 }
 
 export default function Game() {
-  const { phase } = useGameStore();
+  const { phase, showHowToPlay, setShowHowToPlay, language } = useGameStore();
   const { t } = useT();
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
 
@@ -83,6 +84,7 @@ export default function Game() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {showHowToPlay && <HowToPlay />}
       <MetricsHeader />
       <PhaseTicker />
 
@@ -97,9 +99,21 @@ export default function Game() {
         </div>
       </main>
 
-      {/* Command Center FAB — hidden during black market and action */}
-      {!isBlackMarket && (
-        <div className="fixed bottom-4 right-4 z-30">
+      {/* Bottom FABs */}
+      <div className="fixed bottom-4 right-4 z-30 flex flex-col gap-2 items-end">
+        {/* How to Play button */}
+        {!isBlackMarket && (
+          <button
+            onClick={() => setShowHowToPlay(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl font-semibold text-xs shadow-md bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all duration-200"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            {language === "th" ? "วิธีเล่น" : "How to Play"}
+          </button>
+        )}
+
+        {/* Command Center FAB — hidden during black market and action */}
+        {!isBlackMarket && (
           <button
             onClick={() => setCommandCenterOpen(true)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-lg transition-all duration-200 ${
@@ -112,8 +126,8 @@ export default function Game() {
             {t("upgrades.title")}
             {isActionPhase && <span className="text-[10px] text-muted-foreground ml-1">(locked)</span>}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {commandCenterOpen && <CommandCenter onClose={() => setCommandCenterOpen(false)} />}
     </div>

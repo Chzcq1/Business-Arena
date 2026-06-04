@@ -1,5 +1,5 @@
-// ===== SILICON EMPIRE v5 — Game Store =====
-// v5.0: Data extracted to src/game-data/, Black Market + Action Cards + Time-Freeze Events
+// ===== SILICON EMPIRE v8.0 — Game Store =====
+// v8.0: Market Tier System (Mass/Mid/Premium), event de-dup, timer fix, run history
 
 import { create } from "zustand";
 import type {
@@ -13,7 +13,6 @@ import type {
 import { INIT_ACTIVE_EFFECTS, INIT_CEO_SKILL } from "./types";
 import type { CEOActiveSkill, CEOSkillEffectType } from "./types";
 
-// v5.0: All game data lives in src/game-data/ — easy to edit, no coding required
 import { EVENTS, BOT_POSITIVE_EVENTS, BOT_NEGATIVE_EVENTS, TIME_FREEZE_EVENTS } from "@/game-data/eventsData";
 import type { TimeFreezeEventData } from "@/game-data/eventsData";
 import { pickDirectives } from "@/game-data/directivesData";
@@ -27,9 +26,54 @@ const QUARTER_DURATION = 60;
 const MAX_QUARTERS = 16;
 const INSTANT_WIN_CAPITAL = 1_000_000_000;
 const BASE_UNIT_COST = 200;
-const TOTAL_MARKET = 5_000_000;
 
-// Component upgrade costs stay here — tightly coupled to resolution engine
+// ===== v8.0: MARKET TIER SYSTEM =====
+// ตลาดแบ่งเป็น 3 ระดับ ราคากำหนดว่าเข้า tier ไหนได้
+// Mass = ราคาต่ำ, Mid = กลาง, Premium = สูง
+// แต่ละ tier มีขนาดตลาดและ dynamics ต่างกัน
+export interface MarketTier {
+  name: "mass" | "mid" | "premium";
+  // ขนาด addressable market (units ทั้งหมด 2 ฝ่ายแย่งกัน)
+  marketSize: number;
+  // ช่วงราคาที่เข้า tier นี้ได้
+  priceMin: number;
+  priceMax: number;
+  // ตัวคูณ demand สำหรับ tier นี้ (tech/brand bonus)
+  techWeight: number;   // สัดส่วนที่ tech level มีผล
+  brandWeight: number;  // สัดส่วนที่ brand มีผล
+}
+
+// ขนาดตลาดรวม ~160,000 units (จาก 5M เดิม)
+// ผู้เล่นตั้ง capacity สูงสุด ~53,000 units ต่อไตรมาส
+// ดังนั้นต้องแย่งกันจริงๆ ไม่ขายหมดเสมอ
+export const MARKET_TIERS: MarketTier[] = [
+  {
+    name: "mass",
+    marketSize: 80_000,   // ตลาดใหญ่ แต่กำไรบาง
+    priceMin: 299,
+    priceMax: 699,
+    techWeight: 0.15,
+    brandWeight: 0.10,
+  },
+  {
+    name: "mid",
+    marketSize: 55_000,   // ตลาดกลาง สมดุลดี
+    priceMin: 700,
+    priceMax: 1099,
+    techWeight: 0.35,
+    brandWeight: 0.25,
+  },
+  {
+    name: "premium",
+    marketSize: 25_000,   // ตลาดเล็ก แต่กำไรหนา
+    priceMin: 1100,
+    priceMax: 3000,
+    techWeight: 0.55,
+    brandWeight: 0.55,
+  },
+];
+
+// Component upgrade costs
 const COMPONENT_UPGRADE_COSTS: Record<keyof ComponentsState, number[]> = {
   chip:    [0, 0, 3, 5, 8, 12],
   battery: [0, 0, 2, 4, 6, 9],
@@ -44,6 +88,14 @@ function clamp(v: number, min: number, max: number): number {
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
+
+// v8.0: De-dup event picker — ไม่เล่น event ซ้ำในรอบเดียวกัน
+function pickUniqueEvent(usedIds: string[]): QuarterEvent {
+  const unused = EVENTS.filter((e) => !usedIds.includes(e.id));
+  const pool = unused.length > 0 ? unused : EVENTS;
+  return pickRandom(pool);
+}
+
 function generateMarketIntel(player: PlayerMetrics): MarketIntel {
   const trends = ["rising", "stable", "falling"] as const;
   const activities = ["aggressive", "passive", "unknown"] as const;
@@ -57,7 +109,6 @@ function generateMarketIntel(player: PlayerMetrics): MarketIntel {
   };
 }
 
-// v5.0: Bot schedule uses persona behavior from botPersonas.ts config
 function generateBotSchedule(
   bot: BotState,
   quarter: number,
@@ -113,11 +164,89 @@ function generateBotSchedule(
   return actions.sort((a, b) => a.triggerAtSecond - b.triggerAtSecond);
 }
 
-// ===== v6.0 CONSTANTS =====
 const CFO_SALARY_PER_QUARTER = 5_000_000;
 const COO_SALARY_PER_QUARTER = 3_000_000;
 
-// ===== RESOLUTION ENGINE v6.0 =====
+// ===== v8.0: MARKET TIER RESOLUTION ENGINE =====
+// คำนวณ demand แยกตาม tier ราคากำหนดว่าเข้า tier ไหน
+function resolveMarketTiers(
+  playerPrice: number,
+  botPrice: number,
+  playerTech: number,
+  botTech: number,
+  playerBrand: number,
+  botBrand: number,
+  chipMultiplier: number,
+  displayBrandBonus: number,
+  brandLoyalistBonus: number,
+  demandMult: number,
+  tradeBanActive: boolean,
+): { playerTierDemand: number; botTierDemand: number; playerTier: "mass" | "mid" | "premium" | null } {
+  if (tradeBanActive) return { playerTierDemand: 0, botTierDemand: 0, playerTier: null };
+
+  // หา tier ของผู้เล่น
+  const playerTierDef = MARKET_TIERS.find(
+    (t) => playerPrice >= t.priceMin && playerPrice <= t.priceMax
+  ) ?? MARKET_TIERS[0];
+
+  // หา tier ของ Bot
+  const botTierDef = MARKET_TIERS.find(
+    (t) => botPrice >= t.priceMin && botPrice <= t.priceMax
+  ) ?? MARKET_TIERS[0];
+
+  let totalPlayerDemand = 0;
+  let totalBotDemand = 0;
+
+  for (const tier of MARKET_TIERS) {
+    const playerInTier = playerTierDef.name === tier.name;
+    const botInTier = botTierDef.name === tier.name;
+
+    if (!playerInTier && !botInTier) continue;
+
+    const tierSize = tier.marketSize;
+
+    // คำนวณ share ภายใน tier
+    if (playerInTier && botInTier) {
+      // ทั้งคู่แข่งใน tier เดียวกัน
+      // Price share: ราคาต่ำกว่าได้เปรียบ
+      const priceSharePlayer = clamp(0.5 + (botPrice - playerPrice) / (tier.priceMax - tier.priceMin + 1), 0.05, 0.95);
+
+      // Tech share
+      const techSharePlayer = clamp(0.5 + (playerTech - botTech) * 0.08 * chipMultiplier, 0.05, 0.95);
+
+      // Brand share
+      const brandSharePlayer = clamp(
+        (0.5 + (playerBrand - botBrand) * 0.006) * displayBrandBonus * brandLoyalistBonus,
+        0.05, 0.95
+      );
+
+      // Weighted by tier's emphasis
+      const priceWeight = 1.0 - tier.techWeight - tier.brandWeight;
+      const compositeShare = (
+        priceWeight * priceSharePlayer +
+        tier.techWeight * techSharePlayer +
+        tier.brandWeight * brandSharePlayer
+      );
+
+      totalPlayerDemand += Math.floor(tierSize * compositeShare * demandMult);
+      totalBotDemand += Math.floor(tierSize * (1 - compositeShare));
+
+    } else if (playerInTier) {
+      // เฉพาะผู้เล่นใน tier นี้ ได้ส่วนใหญ่
+      const monopolyShare = clamp(0.70 + playerBrand * 0.002, 0.60, 0.90);
+      totalPlayerDemand += Math.floor(tierSize * monopolyShare * demandMult);
+
+    } else if (botInTier) {
+      // เฉพาะ Bot ใน tier นี้
+      const botMonopoly = clamp(0.70 + botBrand * 0.002, 0.60, 0.90);
+      totalBotDemand += Math.floor(tierSize * botMonopoly);
+    }
+  }
+
+  return { playerTierDemand: totalPlayerDemand, botTierDemand: totalBotDemand, playerTier: playerTierDef.name };
+}
+
+// ===== RESOLUTION ENGINE v8.0 =====
 function resolveQuarter(
   player: PlayerMetrics,
   draft: PlayerDraft,
@@ -146,7 +275,6 @@ function resolveQuarter(
   if (boardDirective === "aggressive_rd")      costMultiplier *= 1.10;
   if (boardDirective === "cost_cutting")       costMultiplier *= 0.85;
   if (boardDirective === "supply_chain_deal")  costMultiplier *= 0.85;
-  // v6.0: Operator Emergency Cut active skill — reduce unit cost by 20% this quarter
   const emergencyCutMod = (draft as PlayerDraft & { _emergencyCutCostMod?: number })._emergencyCutCostMod ?? 1.0;
   const effectiveUnitCost = Math.round(baseCost * costMultiplier * emergencyCutMod);
 
@@ -154,50 +282,20 @@ function resolveQuarter(
   let playerCapacity = Math.floor(draft.productionBudget * 0.8 / effectiveUnitCost);
   if (tradeBanActive) playerCapacity = 0;
 
-  // Bot capacity (v5.0: reduced by action card botCapacityMult)
+  // Bot capacity
   const botBaseCost = bot.hasFactory ? BASE_UNIT_COST * 0.75 : BASE_UNIT_COST;
   const botCapacityRaw = Math.floor(bot.productionBudget * 0.8 / botBaseCost);
   const botCapacityWithCards = Math.floor(botCapacityRaw * cardEffects.botCapacityMult);
   const botCapacity = sabotage.ddosPending ? Math.floor(botCapacityWithCards * 0.70) : botCapacityWithCards;
 
-  const BUDGET_SEG = TOTAL_MARKET * 0.40;
-  const TECH_SEG   = TOTAL_MARKET * 0.30;
-  const BRAND_SEG  = TOTAL_MARKET * 0.30;
-
-  const budgetShare = clamp(0.5 + (bot.price - draft.price) / 300, 0.05, 0.95);
-
-  // Tech share (v5.0: playerTechBonus from cards)
-  const espionageTechBonus = boardDirective === "industrial_espionage" ? 2 : 0;
+  // v8.0: Market Tier demand calculation
   const chipMultiplier = [1.0, 1.0, 1.12, 1.25, 1.40, 1.60][clamp(components.chip, 0, 5)];
-  const effectiveTech = player.techLevel + cardEffects.playerTechBonus;
-  const rawTechShare = 0.5 + (effectiveTech + espionageTechBonus - (bot.techLevel + (bot.components?.chip ?? 1) * 0.2)) * 0.10;
-  const techShare = clamp(rawTechShare * chipMultiplier, 0.05, 0.97);
-
-  // Brand share (v5.0: botBrandDelta reduces bot brand)
   const displayBrandBonus = components.display >= 5 ? 1.20 : components.display >= 4 ? 1.10 : 1.0;
+  const effectiveTech = player.techLevel + cardEffects.playerTechBonus;
+  const espionageTechBonus = boardDirective === "industrial_espionage" ? 2 : 0;
   const effectiveBotBrand = bot.brandPerception + cardEffects.botBrandDelta;
-  const brandShare = clamp(
-    (0.5 + (player.brandPerception - effectiveBotBrand) * 0.008) * displayBrandBonus * ceoBackground.brandLoyalistBonus,
-    0.05, 0.95
-  );
 
-  const displayCeilingMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][clamp(components.display, 0, 5)];
-  let maxViablePrice = player.techLevel * 200 * displayCeilingMult * ceoBackground.priceCeilingModifier;
-  if (boardDirective === "premium_focus") maxViablePrice *= 1.15;
-
-  let demandFactor = 1.0;
-  if (draft.price > maxViablePrice) {
-    demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
-  }
-
-  const batteryPenaltyApplied = quarter >= 3 && components.battery < 2;
-  let revenueMultiplier = batteryPenaltyApplied ? 0.80 : 1.0;
-  if (boardDirective === "flash_sale") revenueMultiplier *= 0.80;
-
-  const memBudgetBonus = [1.0, 1.0, 1.06, 1.12, 1.18, 1.25][clamp(components.memory, 0, 5)];
-  const batteryBudgetBonus = components.battery >= 4 ? 1.08 : 1.0;
-
-  // Demand multipliers (v5.0: playerDemandMult from cards applied last)
+  // Demand multipliers
   let demandMult = 1.0;
   if (boardDirective === "market_expansion")     demandMult = 1.12;
   if (boardDirective === "planned_obsolescence") demandMult = 1.30;
@@ -207,22 +305,50 @@ function resolveQuarter(
   if (hypeCampaignActive) demandMult *= 1.40;
   demandMult *= cardEffects.playerDemandMult;
 
+  // v8.0: Resolve tier-based demand
+  const { playerTierDemand: rawPlayerTierDemand, botTierDemand: rawBotTierDemand, playerTier } = resolveMarketTiers(
+    draft.price,
+    bot.price,
+    effectiveTech + espionageTechBonus,
+    bot.techLevel + (bot.components?.chip ?? 1) * 0.2,
+    player.brandPerception,
+    effectiveBotBrand,
+    chipMultiplier,
+    displayBrandBonus,
+    ceoBackground.brandLoyalistBonus,
+    demandMult,
+    tradeBanActive,
+  );
+
+  // v8.0: Price ceiling check (ราคาเกินเพดาน tech level)
+  const displayCeilingMult = [1.0, 1.0, 1.15, 1.35, 1.60, 2.00][clamp(components.display, 0, 5)];
+  let maxViablePrice = player.techLevel * 200 * displayCeilingMult * ceoBackground.priceCeilingModifier;
+  if (boardDirective === "premium_focus") maxViablePrice *= 1.15;
+
+  let demandFactor = 1.0;
+  if (draft.price > maxViablePrice) {
+    demandFactor = Math.max(0.02, 1 - (draft.price - maxViablePrice) / 700);
+  }
+
+  // Volume play directive
   const budgetVolumeMult  = boardDirective === "volume_play" ? 1.15 : 1.0;
   const techVolumePenalty = boardDirective === "volume_play" ? 0.95 : 1.0;
 
-  const playerBudgetDemand = BUDGET_SEG * budgetShare * memBudgetBonus * batteryBudgetBonus * budgetVolumeMult * demandMult;
-  const playerTechDemand   = TECH_SEG   * techShare   * demandFactor * techVolumePenalty * demandMult;
-  const playerBrandDemand  = BRAND_SEG  * brandShare  * demandMult;
-  const playerRawDemand    = tradeBanActive ? 0 : Math.floor(playerBudgetDemand + playerTechDemand + playerBrandDemand);
+  let playerRawDemand = tradeBanActive ? 0 : Math.floor(rawPlayerTierDemand * demandFactor * budgetVolumeMult * techVolumePenalty);
 
-  const botBrandMod = sabotage.prPending ? 0.93 : 1.0;
-  const botRawDemand = Math.floor(
-    BUDGET_SEG * (1 - budgetShare) +
-    TECH_SEG   * (1 - techShare) +
-    BRAND_SEG  * (1 - brandShare) * botBrandMod
-  );
+  // Memory/Battery budget bonus (applied on top)
+  const memBudgetBonus = [1.0, 1.0, 1.06, 1.12, 1.18, 1.25][clamp(components.memory, 0, 5)];
+  const batteryBudgetBonus = components.battery >= 4 ? 1.08 : 1.0;
+  // Apply memory/battery bonus only for mass/mid tier
+  if (playerTier === "mass" || playerTier === "mid") {
+    playerRawDemand = Math.floor(playerRawDemand * memBudgetBonus * batteryBudgetBonus);
+  }
 
-  // v6.0: Hard Price Cap — defined FIRST before playerSales (fix TDZ bug)
+  const batteryPenaltyApplied = quarter >= 3 && components.battery < 2;
+  let revenueMultiplier = batteryPenaltyApplied ? 0.80 : 1.0;
+  if (boardDirective === "flash_sale") revenueMultiplier *= 0.80;
+
+  // v8.0: Hard Price Cap — ราคาสูงกว่า bot >25% demand ดิ่ง
   const priceRatio = bot.price > 0 ? draft.price / bot.price : 1;
   const hardPricePenaltyApplied = !tradeBanActive && priceRatio > 1.25;
   const brandBurnApplied = !tradeBanActive && priceRatio > 1.30;
@@ -231,15 +357,20 @@ function resolveQuarter(
     : playerRawDemand;
 
   const playerSales = Math.min(playerCapacity, finalPlayerRawDemand);
-  const botSales    = Math.min(botCapacity, botRawDemand);
+  const botSales    = Math.min(botCapacity, rawBotTierDemand);
 
+  // Segment breakdown (approximate from tier demand ratios)
   const demandTotal = Math.max(finalPlayerRawDemand, 1);
-  const segBudget = Math.floor(playerSales * (playerBudgetDemand / demandTotal));
-  const segTech   = Math.floor(playerSales * (playerTechDemand   / demandTotal));
+  // Distribute sales proportionally across segments for display
+  const tierObj = MARKET_TIERS.find((t) => t.name === playerTier) ?? MARKET_TIERS[0];
+  const massRatio   = playerTier === "mass" ? 1.0 : 0;
+  const midRatio    = playerTier === "mid"  ? 1.0 : 0;
+  const premRatio   = playerTier === "premium" ? 1.0 : 0;
+  const segBudget = Math.floor(playerSales * (massRatio * (1 - tierObj.techWeight - tierObj.brandWeight) + 0.1));
+  const segTech   = Math.floor(playerSales * tierObj.techWeight);
   const segBrand  = Math.max(0, playerSales - segBudget - segTech);
 
   const playerUnsold = Math.max(0, playerCapacity - finalPlayerRawDemand);
-  // v6.0: CFO nerf — cap E-Waste reduction to 15% (was 30%). 2× fine multiplier (was 1.5×)
   const cfoEWaste = executives.cfo ? 0.85 : 1.0;
   const eWastePenalty = Math.floor(playerUnsold * effectiveUnitCost * 3.0 * ceoBackground.eWastePenaltyReduction * cfoEWaste);
 
@@ -256,7 +387,6 @@ function resolveQuarter(
     : boardDirective === "viral_launch"     ? 8_000_000 : 0;
 
   const debtRepayment = loans.quartersRemaining > 0 ? loans.repaymentPerQuarter : 0;
-  // v6.0: Staff salaries deducted every quarter
   const staffSalaryDeducted = (executives.cfo ? CFO_SALARY_PER_QUARTER : 0) + (executives.coo ? COO_SALARY_PER_QUARTER : 0);
   const capitalChange = playerProfit - debtRepayment - directiveCost - staffSalaryDeducted;
 
@@ -275,7 +405,6 @@ function resolveQuarter(
   if (boardDirective === "cost_cutting")   brandChange -= 5;
   if (boardDirective === "viral_launch")   brandChange += 20;
   if (components.battery >= 3) brandChange += 3;
-  // v6.0: Brand Burn — price gouging destroys brand trust
   if (brandBurnApplied) brandChange -= 30;
 
   let moraleChange = playerSales > botSales * 1.1 ? 8 : playerSales < botSales * 0.9 ? -8 : 0;
@@ -313,7 +442,35 @@ function resolveQuarter(
     segmentBudget: segBudget, segmentTech: segTech, segmentBrand: segBrand,
     batteryPenaltyApplied, summaryKey,
     staffSalaryDeducted, hardPricePenaltyApplied, brandBurnApplied,
+    playerTier: playerTier ?? "mass",
   };
+}
+
+// ===== v8.0: RUN HISTORY (localStorage) =====
+export interface RunRecord {
+  date: string;
+  quartersSurvived: number;
+  finalCapital: number;
+  gameResult: GameResult;
+  ceoType: string;
+  botPersona: string;
+  marketShare: number;
+}
+
+function loadRunHistory(): RunRecord[] {
+  try {
+    const raw = localStorage.getItem("silicon_empire_runs");
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveRunRecord(record: RunRecord): RunRecord[] {
+  try {
+    const history = loadRunHistory();
+    const updated = [record, ...history].slice(0, 10); // เก็บ 10 run ล่าสุด
+    localStorage.setItem("silicon_empire_runs", JSON.stringify(updated));
+    return updated;
+  } catch { return []; }
 }
 
 // ===== INITIAL STATE =====
@@ -347,13 +504,14 @@ interface GameState {
 
   quarterTimer: number;
   timerRunning: boolean;
-  timerPaused: boolean;            // v5.0: true during time-freeze event
-  pendingTimeFreezeAt: number | null; // v5.0: elapsed seconds when freeze triggers
+  timerPaused: boolean;
+  pendingTimeFreezeAt: number | null;
   playerReady: boolean;
   botLocked: boolean;
   botLockTime: number;
 
   currentEvent: QuarterEvent | null;
+  usedEventIds: string[];   // v8.0: track used events for de-dup
   marketIntel: MarketIntel | null;
   intelAlerts: IntelAlert[];
   midQuarterEventKey: string | null;
@@ -372,21 +530,20 @@ interface GameState {
   capitalHistory: CapitalHistoryEntry[];
   lastResolution: ResolutionResult | null;
 
-  // v4.0
   hypeCampaign: HypeCampaignState | null;
   tradeBanActive: boolean;
   prDisasterActive: boolean;
 
-  // v5.0 Black Market & Action Cards
   blackMarketCards: ActionCard[];
   equippedCards: EquippedCard[];
   activeCardEffects: ActiveCardEffects;
 
-  // v5.0 Time-Freeze Events
   timeFreezeEvent: TimeFreezeEventData | null;
-
-  // v6.0 CEO Active Skill
   ceoActiveSkill: CEOActiveSkill;
+
+  // v8.0: Run history
+  runHistory: RunRecord[];
+  showHowToPlay: boolean;
 
   // ===== ACTIONS =====
   startGame: () => void;
@@ -394,8 +551,8 @@ interface GameState {
   useCEOSkill: () => void;
   advanceToBoardMeeting: () => void;
   chooseBoardDirective: (d: BoardDirective) => void;
-  buyActionCard: (cardId: string) => void;       // v5.0
-  proceedFromBlackMarket: () => void;             // v5.0
+  buyActionCard: (cardId: string) => void;
+  proceedFromBlackMarket: () => void;
   resolveEvent: (choiceId: string) => void;
   startActionPhase: () => void;
   tickTimer: () => void;
@@ -414,9 +571,10 @@ interface GameState {
   launchSabotage: (type: "ddos" | "pr") => void;
   upgradeComponent: (comp: keyof ComponentsState) => void;
   launchHypeCampaign: () => void;
-  useActionCard: (cardId: string) => void;         // v5.0
-  resolveTimeFreezeEvent: (choiceId: string) => void; // v5.0
+  useActionCard: (cardId: string) => void;
+  resolveTimeFreezeEvent: (choiceId: string) => void;
   resetGame: () => void;
+  setShowHowToPlay: (v: boolean) => void;
 }
 
 // ===== STORE =====
@@ -424,7 +582,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   phase: "ceoselect",
   quarter: 1,
   gameResult: "playing",
-  language: "en",
+  language: "th",
 
   player: { ...INIT_PLAYER },
   draft: { ...INIT_DRAFT },
@@ -441,6 +599,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   botLockTime: 20,
 
   currentEvent: null,
+  usedEventIds: [],
   marketIntel: null,
   intelAlerts: [],
   midQuarterEventKey: null,
@@ -469,9 +628,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   timeFreezeEvent: null,
   ceoActiveSkill: { ...INIT_CEO_SKILL },
 
+  runHistory: loadRunHistory(),
+  showHowToPlay: false,
+
   // ===== ACTIONS =====
 
   startGame: () => {},
+
+  setShowHowToPlay: (v) => set({ showHowToPlay: v }),
 
   selectCEOBackground: (type) => {
     const ceoBackground = CEO_BACKGROUNDS[type];
@@ -491,6 +655,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       blackMarketCards: [], equippedCards: [],
       activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
       timeFreezeEvent: null, timerPaused: false, pendingTimeFreezeAt: null,
+      usedEventIds: [],
     });
   },
 
@@ -498,7 +663,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ phase: "boardmeeting", pendingDirectives: pickDirectives() });
   },
 
-  // v5.0: After selecting a directive, go to Black Market (not event)
   chooseBoardDirective: (d) => {
     const shopCards = [...ACTION_CARDS]
       .sort(() => Math.random() - 0.5)
@@ -512,7 +676,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // v5.0: Buy a card from the Black Market (up to MAX_EQUIPPED_CARDS)
   buyActionCard: (cardId) => {
     const { player, blackMarketCards, equippedCards } = get();
     if (equippedCards.length >= MAX_EQUIPPED_CARDS) return;
@@ -527,10 +690,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // v5.0: Leave the Black Market and proceed to Event phase
+  // v8.0: De-dup event picker
   proceedFromBlackMarket: () => {
-    const event = pickRandom(EVENTS);
-    set({ phase: "event", currentEvent: event });
+    const { usedEventIds } = get();
+    const event = pickUniqueEvent(usedEventIds);
+    set({ phase: "event", currentEvent: event, usedEventIds: [...usedEventIds, event.id] });
   },
 
   resolveEvent: (choiceId) => {
@@ -554,7 +718,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // v5.0: Set pendingTimeFreezeAt (70% chance) to surprise the player mid-phase
+  // v8.0: Set pendingTimeFreezeAt (70% chance)
   startActionPhase: () => {
     const { bot, quarter, botPersona, draft } = get();
     const schedule = generateBotSchedule(bot, quarter, botPersona, draft.price);
@@ -563,7 +727,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       : null;
     const botLockTime = Math.floor(Math.random() * 16) + 15;
     const pendingTimeFreezeAt = Math.random() < 0.70
-      ? Math.floor(Math.random() * 28) + 12   // triggers 12-40 seconds in
+      ? Math.floor(Math.random() * 28) + 12
       : null;
     const { ceoActiveSkill } = get();
     set({
@@ -579,14 +743,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       botLockTime,
       pendingTimeFreezeAt,
       bot: { ...bot, lastMoveLabel: null, lastMoveTime: null },
-      // v6.0: reset per-quarter skill usage flag
       ceoActiveSkill: { ...ceoActiveSkill, usedThisQuarter: false, effectType: null },
     });
   },
 
-  // v6.0: CEO Active Skill — 3 charges per game
   useCEOSkill: () => {
-    const { ceoBackground, ceoActiveSkill, quarter, timerRunning, timerPaused } = get();
+    const { ceoBackground, ceoActiveSkill, timerRunning, timerPaused } = get();
     if (!ceoBackground) return;
     if (ceoActiveSkill.chargesLeft <= 0) return;
     if (ceoActiveSkill.usedThisQuarter) return;
@@ -603,18 +765,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         usedThisQuarter: true,
         effectType,
       },
-      // Immediate brand boost for Marketer
       player: ceoBackground.type === "marketer"
         ? { ...state.player, brandPerception: Math.min(100, state.player.brandPerception + 8) }
         : state.player,
     }));
   },
 
-  // v5.0: Handles time-freeze pause + botFrozenSecondsLeft countdown
+  // v8.0: Fixed timer — ตรวจ timerPaused ก่อน tick เสมอ ไม่มี race condition
   tickTimer: () => {
     const state = get();
     if (!state.timerRunning || state.phase !== "action") return;
-    if (state.timerPaused) return; // PAUSED — don't tick
+    if (state.timerPaused) return;
 
     const newTimer = state.quarterTimer - 1;
     if (newTimer <= 0) {
@@ -625,7 +786,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const elapsed = QUARTER_DURATION - newTimer;
 
-    // v5.0: Trigger time-freeze event
+    // Trigger time-freeze event
     if (state.pendingTimeFreezeAt !== null && elapsed >= state.pendingTimeFreezeAt) {
       const freezeEvent = pickRandom(TIME_FREEZE_EVENTS);
       set({
@@ -637,7 +798,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
 
-    // v5.0: Decrement bot freeze visual countdown
     let newEffects = state.activeCardEffects;
     if (newEffects.botFrozenSecondsLeft > 0) {
       newEffects = { ...newEffects, botFrozenSecondsLeft: newEffects.botFrozenSecondsLeft - 1 };
@@ -653,7 +813,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    // v5.0: Skip bot actions while frozen
     const isBotFrozen = newEffects.botFrozenSecondsLeft > 0;
     const pendingActions = isBotFrozen
       ? []
@@ -691,7 +850,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  // v5.0: Activate an equipped card during the 60-second phase
   useActionCard: (cardId) => {
     const state = get();
     if (state.phase !== "action") return;
@@ -715,7 +873,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ equippedCards: newEquipped, activeCardEffects: newEffects });
   },
 
-  // v5.0: Resolve a time-freeze mini-event, apply its effect, resume timer
   resolveTimeFreezeEvent: (choiceId) => {
     const state = get();
     if (!state.timeFreezeEvent) return;
@@ -735,6 +892,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       activeCardEffects: newEffects,
       timeFreezeEvent: null,
       timerPaused: false,
+      // v8.0: timer ไม่ jump หลัง resolve — เราแค่ set timerPaused: false แล้ว interval ที่ยัง run อยู่จะ tick ต่อเอง
     });
   },
 
@@ -755,7 +913,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  // ===== LOCK AND RESOLVE v5.0 =====
+  // ===== LOCK AND RESOLVE v8.0 =====
   lockAndResolve: () => {
     const {
       player, draft, bot, executives, upgrades, loans, sabotage,
@@ -765,20 +923,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     } = get();
     if (!ceoBackground) return;
 
-    // v5.0: Cyber Shield blocks Trade Ban and PR Disaster
     const shielded = activeCardEffects.cyberShield;
     const effectiveTradeBan    = tradeBanActive && !shielded;
     const effectivePrDisaster  = prDisasterActive && !shielded;
 
-    // v6.0: CEO Active Skill — apply effects this quarter
     let skillCardEffects = { ...activeCardEffects };
     if (ceoActiveSkill.usedThisQuarter && ceoActiveSkill.effectType) {
       if (ceoActiveSkill.effectType === "tech_surge") {
         skillCardEffects = { ...skillCardEffects, playerDemandMult: skillCardEffects.playerDemandMult * 1.20 };
       } else if (ceoActiveSkill.effectType === "flash_pr") {
         skillCardEffects = { ...skillCardEffects, playerDemandMult: skillCardEffects.playerDemandMult * 1.15 };
-      } else if (ceoActiveSkill.effectType === "emergency_cut") {
-        // cost reduction handled via a modified draft passed to resolveQuarter below
       }
     }
     const emergencyCutActive = ceoActiveSkill.usedThisQuarter && ceoActiveSkill.effectType === "emergency_cut";
@@ -787,7 +941,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       : draft;
 
     const rawResult = resolveQuarter(
-      player, draft, bot, executives, upgrades, loans, sabotage,
+      player, resolvedDraft, bot, executives, upgrades, loans, sabotage,
       components, boardDirective, quarter, ceoBackground,
       !!(hypeCampaign?.active && !hypeCampaign?.fulfilled),
       effectiveTradeBan, effectivePrDisaster, skillCardEffects,
@@ -800,7 +954,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (roll < 0.25)       { const ev = pickRandom(BOT_POSITIVE_EVENTS); botEventLabel = ev.label; botCapitalDelta = ev.capitalDelta; }
     else if (roll < 0.42)  { const ev = pickRandom(BOT_NEGATIVE_EVENTS); botEventLabel = ev.label; botCapitalDelta = ev.capitalDelta; }
 
-    // Bot Auto-Upgrade (uses persona config from botPersonas.ts)
+    // Bot Auto-Upgrade
     const personaMeta = botPersona ? BOT_PERSONA_META[botPersona] : null;
     const maxBotUpgrades = personaMeta?.behavior.maxUpgradesPerQuarter ?? 1;
     const techGrowthInterval = personaMeta?.behavior.techGrowthInterval ?? 4;
@@ -858,7 +1012,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       newLoans.outstanding = Math.max(0, newLoans.outstanding - newLoans.repaymentPerQuarter);
     }
 
-    // Player update (v5.0: playerBrandBonus from action cards)
+    // Player update
     let newPlayer: PlayerMetrics = {
       capital:         clamp(player.capital + rawResult.capitalChange - antitrustFine, 0, Infinity),
       morale:          clamp(player.morale + rawResult.moraleChange, 0, 100),
@@ -936,7 +1090,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       hypeFulfilled,
     };
 
-    // v6.0: Bankruptcy check AFTER all deductions (e-waste fines + salaries + debt)
     let gameResult: GameResult = "playing";
     if (newPlayer.capital <= 0)                     gameResult = "bankrupt";
     else if (newPlayer.capital >= INSTANT_WIN_CAPITAL) gameResult = "won_instant";
@@ -951,14 +1104,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       tradeBanActive: newTradeBanActive,
       prDisasterActive: newPrDisasterActive,
       hypeCampaign: newHypeCampaign,
-      // v5.0: Clear for next quarter
       equippedCards: [], activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
       timeFreezeEvent: null, timerPaused: false, blackMarketCards: [],
     });
   },
 
   nextQuarter: () => {
-    const { quarter, player, bot, gameResult } = get();
+    const { quarter, player, bot, gameResult, ceoBackground, botPersona } = get();
+
+    // v8.0: Save run record when game ends
+    if (gameResult !== "playing" || quarter >= MAX_QUARTERS) {
+      const finalResult: GameResult = quarter >= MAX_QUARTERS && gameResult === "playing"
+        ? (player.capital > bot.capital ? "won_timeout" : "won_timeout_lost")
+        : gameResult;
+
+      const record: RunRecord = {
+        date: new Date().toLocaleDateString("th-TH"),
+        quartersSurvived: quarter,
+        finalCapital: player.capital,
+        gameResult: finalResult,
+        ceoType: ceoBackground?.type ?? "unknown",
+        botPersona: botPersona ?? "unknown",
+        marketShare: player.marketShare,
+      };
+      const history = saveRunRecord(record);
+
+      if (finalResult !== "playing") {
+        set({ phase: "gameover", gameResult: finalResult, runHistory: history });
+        return;
+      }
+    }
+
     if (gameResult !== "playing") { set({ phase: "gameover" }); return; }
     if (quarter >= MAX_QUARTERS) {
       const finalResult: GameResult = player.capital > bot.capital ? "won_timeout" : "won_timeout_lost";
@@ -1091,6 +1267,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       activeCardEffects: { ...INIT_ACTIVE_EFFECTS },
       timeFreezeEvent: null,
       ceoActiveSkill: { ...INIT_CEO_SKILL },
+      usedEventIds: [],
+      runHistory: loadRunHistory(),
     });
   },
 }));

@@ -1,11 +1,73 @@
+// ===== GAME OVER v2.0 — Run History =====
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
 import { formatCapital } from "@/utils/format";
-import { Trophy, TrendingDown, BarChart2, RotateCcw, Star, Clock } from "lucide-react";
+import { Trophy, TrendingDown, BarChart2, RotateCcw, Star, Clock, History } from "lucide-react";
+import type { RunRecord } from "@/store/gameStore";
+
+function getRatingLabel(r: RunRecord): string {
+  if (r.gameResult === "won_instant") return "🏆 Silicon Emperor";
+  if (r.gameResult === "won_timeout") return "✓ CEO of the Year";
+  if (r.gameResult === "bankrupt") return "💀 Bankrupt";
+  return "⚡ Runner-up";
+}
+
+function getResultColor(result: string): string {
+  if (result === "won_instant") return "text-yellow-400";
+  if (result === "won_timeout") return "text-emerald-400";
+  if (result === "bankrupt") return "text-red-400";
+  return "text-orange-400";
+}
+
+function RunHistoryPanel({ history, isTh }: { history: RunRecord[]; isTh: boolean }) {
+  if (history.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-card-border rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <History className="w-4 h-4 text-muted-foreground" />
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          {isTh ? "ประวัติการเล่น" : "Run History"}
+        </p>
+      </div>
+      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+        {history.map((run, i) => (
+          <div
+            key={i}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg bg-secondary/40 border ${
+              i === 0 ? "border-primary/30" : "border-border/40"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`text-[10px] font-bold w-5 text-center ${i === 0 ? "text-primary" : "text-muted-foreground"}`}>
+                {i === 0 ? "✦" : `#${i + 1}`}
+              </div>
+              <div>
+                <p className={`text-xs font-semibold ${getResultColor(run.gameResult)}`}>
+                  {getRatingLabel(run)}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {run.date} · Q{run.quartersSurvived}/16 · {run.ceoType}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className={`text-xs font-mono font-bold ${getResultColor(run.gameResult)}`}>
+                {formatCapital(run.finalCapital)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{run.marketShare.toFixed(1)}% share</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function GameOver() {
-  const { player, bot, quarter, gameResult, resetGame } = useGameStore();
+  const { player, bot, quarter, gameResult, resetGame, runHistory, language } = useGameStore();
   const { t } = useT();
+  const isTh = language === "th";
 
   const isBankrupt = gameResult === "bankrupt";
   const isInstantWin = gameResult === "won_instant";
@@ -88,6 +150,9 @@ export function GameOver() {
             ))}
           </div>
         </div>
+
+        {/* v2.0: Run History */}
+        <RunHistoryPanel history={runHistory} isTh={isTh} />
 
         <button onClick={resetGame}
           className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors">

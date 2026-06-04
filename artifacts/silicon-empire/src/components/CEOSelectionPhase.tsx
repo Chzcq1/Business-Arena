@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useT } from "@/hooks/useT";
+import { HowToPlay } from "@/components/HowToPlay";
 import type { CEOBackgroundType } from "@/store/types";
 
 const CEO_STYLES: Record<CEOBackgroundType, {
@@ -15,12 +16,13 @@ const CEO_STYLES: Record<CEOBackgroundType, {
 const CLASSES: CEOBackgroundType[] = ["visionary", "marketer", "operator"];
 
 export function CEOSelectionPhase() {
-  const { selectCEOBackground, toggleLanguage, language } = useGameStore();
+  const { selectCEOBackground, toggleLanguage, language, showHowToPlay, setShowHowToPlay } = useGameStore();
   const { t } = useT();
   const [selected, setSelected] = useState<CEOBackgroundType | null>(null);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {showHowToPlay && <HowToPlay />}
       <div className="border-b border-border bg-sidebar/50 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center text-sm">💻</div>
@@ -30,7 +32,10 @@ export function CEOSelectionPhase() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-muted-foreground font-mono">v4.0 · 16 QUARTERS</span>
+          <button onClick={() => setShowHowToPlay(true)} className="text-[10px] px-3 py-1.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/10 transition-colors font-semibold">
+            {language === "th" ? "วิธีเล่น ?" : "How to Play ?"}
+          </button>
+          <span className="text-[10px] text-muted-foreground font-mono">v8.0 · 16Q</span>
           <button onClick={toggleLanguage} className="text-[10px] px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground transition-colors font-mono uppercase">
             {language === "en" ? "TH" : "EN"}
           </button>

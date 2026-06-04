@@ -210,6 +210,8 @@ export interface ResolutionResult {
   staffSalaryDeducted: number;
   hardPricePenaltyApplied: boolean;
   brandBurnApplied: boolean;
+  // v8.0
+  playerTier: "mass" | "mid" | "premium";
 }
 
 // v5.0: Active effects from equipped Action Cards (accumulated this quarter)
